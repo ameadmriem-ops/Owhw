@@ -1,0 +1,119 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function: checks if a request is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper function: checks if user is the designated admin
+    // Verified by Firebase Custom Claim OR verified Admin UID & Email combination
+    function isAdmin() {
+      return isAuthenticated() && (
+        (request.auth.token.admin == true && request.auth.token.email == 'ameadmriem@gmail.com') ||
+        (request.auth.token.role == 'ADMIN' && request.auth.token.email == 'ameadmriem@gmail.com') ||
+        (request.auth.uid == 'RDp9BU99UJcG60hcBfMFNrxaUwt2' && request.auth.token.email == 'ameadmriem@gmail.com')
+      );
+    }
+
+    // Helper function: checks if user is an assistant (or admin)
+    function isAssistant() {
+      return isAuthenticated() && (
+        isAdmin() ||
+        request.auth.token.assistant == true ||
+        request.auth.token.role == 'ASSISTANT'
+      );
+    }
+    
+    // User Rating on Movies/Content: Exactly one document per user per movie
+    match /movies/{movieId}/ratings/{userId} {
+      allow read: if true;
+      allow create, update: if isAuthenticated() && request.auth.uid == userId &&
+        (request.resource.data.score is int || request.resource.data.score is float) &&
+        request.resource.data.score >= 1 &&
+        request.resource.data.score <= 10;
+      allow delete: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+    }
+
+    // Movies / Anime / Episodes: Publicly readable, writeable only by Admin or rating counter update
+    match /movies/{movieId} {
+      allow read: if true;
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (
+        isAuthenticated() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ratingAverage', 'ratingCount', 'ratingSum', 'views'])
+      );
+    }
+    
+    // Sub-collections under movies if any
+    match /movies/{movieId}/{document=**} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+    
+    // User Bug / Broken Episode Reports: Accessible to Admin and Assistants
+    match /app_reports/{reportId} {
+      allow read: if isAssistant();
+      allow create: if true; // Any user can report a broken episode
+      allow update, delete: if isAssistant();
+    }
+    
+    // FCM Device Registrations
+    match /fcm_devices/{deviceId} {
+      allow read, write: if true;
+    }
+    
+    // Global and Targeted Push Notifications
+    match /app_notifications/{notifId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    // User profile document: user can edit own profile, but cannot set role to ADMIN or ASSISTANT directly
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.auth.uid == userId && (
+        (request.resource.data.role != 'ADMIN' && request.resource.data.role != 'ASSISTANT') || isAdmin()
+      );
+      allow update: if isAuthenticated() && request.auth.uid == userId && (
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'photoURL', 'lastLoginAt', 'email']) || isAdmin())
+      );
+      allow delete: if isAdmin();
+    }
+    
+    // Profile Avatars: Publicly readable for all users, writeable only by Admin
+    match /profile_avatars/{avatarId} {
+      allow read: if true;
+      allow create, delete, update: if isAdmin();
+    }
+
+    // Helper function: validates News document schema
+    function isValidNewsData(data) {
+      return data.title is string &&
+        data.title.size() > 0 &&
+        data.title.size() <= 600 &&
+        data.url is string &&
+        data.url.matches('^https?://.+') &&
+        data.url.size() <= 2048 &&
+        data.poster is string &&
+        data.poster.matches('^https?://.+') &&
+        data.poster.size() <= 2048 &&
+        (!('linkedContentId' in data) || (data.linkedContentId is string && data.linkedContentId.size() <= 256)) &&
+        (!('linkedContentType' in data) || (data.linkedContentType is string && data.linkedContentType.size() <= 64)) &&
+        (!('linkedContentTitle' in data) || (data.linkedContentTitle is string && data.linkedContentTitle.size() <= 500));
+    }
+
+    // News Items: Publicly readable for all users, writeable/editable/deletable ONLY by authorized Admin
+    match /news/{newsId} {
+      allow read: if true;
+      allow create, update: if isAdmin() && isValidNewsData(request.resource.data);
+      allow delete: if isAdmin();
+    }
+    
+    // User private data (favorites, my_list, history)
+    match /users/{userId}/{document=**} {
+      allow read, write: if isAuthenticated() && request.auth.uid == userId;
+    }
+  }
+}

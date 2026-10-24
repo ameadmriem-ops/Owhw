@@ -1,0 +1,13 @@
+{
+  "_comment": "ملف إعدادات وتخصيص إشعارات BLACK ANIME لجميع الهواتف",
+  "topic": "all_users",
+  "title": "تمت إضافة حلقة جديدة!",
+  "message": "تم إصدار الحلقة الجديدة، اضغط للمشاهدة الآن",
+  "targetPage": "details",
+  "contentId": "",
+  "contentTitle": "",
+  "episodeNumber": "1",
+  "action": "play",
+  "imageUrl": "",
+  "url": ""
+}
