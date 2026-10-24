@@ -255,5 +255,25 @@ class ExampleRobolectricTest {
         assertTrue("History stack helper must prevent duplicate consecutive entries", html.contains("window.pushHistoryEntrySafely = function(pageKey)"))
         assertTrue("Input focus cleanup before navigation must clear stale IME focus flags", html.contains("window.clearActiveInputBeforeNav = function()"))
     }
+
+    @Test
+    fun testHomeLatestNewsSectionReplacesExploreAllSection() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val html = context.assets.open("index.html").bufferedReader(Charsets.UTF_8).use { it.readText() }
+
+        // 1. Old 'استكشف كافة الأعمال' section and its grid are completely removed
+        assertFalse("Old Explore All section title must be removed", html.contains("استكشف كافة الأعمال"))
+        assertFalse("Old homeExploreGrid must be removed", html.contains("homeExploreGrid"))
+
+        // 2. Home page now contains 'آخر الأخبار' section with 'عرض المزيد ←' routing to original 'news' page
+        assertTrue("Home Latest News section container must exist", html.contains("""id="homeLatestNewsSection""""))
+        assertTrue("Home Latest News header must display آخر الأخبار", html.contains("""<h3 class="home-section-title">آخر الأخبار</h3>"""))
+        assertTrue("View More button must open original news page", html.contains("""onclick="showPage('news')">عرض المزيد ←</button>"""))
+
+        // 3. Horizontal carousel, circular overlay icons, and shared real-time news data source
+        assertTrue("Horizontal news carousel must exist with partial next-card peek width", html.contains("home-news-scroll-row") && html.contains("clamp(252px, 77vw, 312px)"))
+        assertTrue("Home news card must include circular comment and link overlay buttons", html.contains("home-news-circle-btn comment-btn") && html.contains("home-news-circle-btn link-btn"))
+        assertTrue("Home news cards must reuse window.allNewsItems and handleNewsCardClick", html.contains("window.renderHomeNewsSectionBodyHtml") && html.contains("window.refreshHomeNewsSectionDom"))
+    }
 }
 

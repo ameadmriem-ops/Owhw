@@ -3399,6 +3399,187 @@ body.light-mode #main-content .news-empty-sub {
   color: #6b7280 !important;
 }
 
+/* Home Page Latest News Horizontal Carousel */
+.home-news-section {
+  padding-top: 4px;
+  margin-bottom: 26px;
+}
+.home-news-more-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #9ca3af;
+  font-size: 12.5px;
+  font-weight: 800;
+  padding: 6px 8px;
+  border-radius: 8px;
+}
+.home-news-more-btn:active {
+  background: rgba(255, 255, 255, 0.06);
+  color: #e50914;
+}
+body.light-mode .home-news-more-btn {
+  color: #4b5563 !important;
+}
+.home-news-scroll-row {
+  display: flex;
+  flex-direction: row;
+  gap: 12px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 2px 16px 12px 16px;
+  direction: rtl;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x proximity;
+  touch-action: pan-x pan-y;
+}
+.home-news-scroll-row::-webkit-scrollbar {
+  display: none;
+}
+.home-news-card {
+  flex: 0 0 clamp(252px, 77vw, 312px);
+  width: clamp(252px, 77vw, 312px);
+  scroll-snap-align: start;
+  background: #14151b;
+  border: 1px solid #242733;
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.34);
+  display: flex;
+  flex-direction: column;
+  direction: rtl;
+  transition: transform 0.16s ease, box-shadow 0.16s ease;
+}
+.home-news-card:active {
+  transform: scale(0.99);
+}
+body.light-mode .home-news-card {
+  background: #ffffff !important;
+  border: 1px solid #e5e7eb !important;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08) !important;
+}
+.home-news-poster-box {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #1b1d24;
+  overflow: hidden;
+  cursor: pointer;
+}
+body.light-mode .home-news-poster-box {
+  background: #eef0f4 !important;
+}
+.home-news-poster-box::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 52%;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.52) 0%, rgba(0, 0, 0, 0) 100%);
+  z-index: 3;
+  pointer-events: none;
+}
+.home-news-overlay-icons {
+  position: absolute;
+  bottom: 9px;
+  left: 9px;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  direction: ltr;
+}
+.home-news-circle-btn {
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  min-height: 34px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(20, 22, 29, 0.82);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  color: #ffffff !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.42);
+  transition: transform 0.15s ease, background 0.18s ease;
+}
+.home-news-circle-btn:active {
+  transform: scale(0.9);
+  background: rgba(229, 9, 20, 0.92);
+}
+body.light-mode .home-news-circle-btn {
+  background: rgba(28, 31, 40, 0.82) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(255, 255, 255, 0.22) !important;
+}
+.home-news-card-body {
+  padding: 11px 13px 12px 13px;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  justify-content: space-between;
+  gap: 8px;
+  cursor: pointer;
+  direction: rtl;
+  text-align: right;
+}
+.home-news-card-title {
+  margin: 0;
+  font-size: 13.8px;
+  font-weight: 800;
+  line-height: 1.5;
+  color: #f4f5f7;
+  direction: rtl;
+  text-align: right;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+  min-height: 41px;
+}
+body.light-mode #main-content .home-news-card-title,
+body.light-mode .home-news-card-title {
+  color: #111827 !important;
+}
+.home-news-card-meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  direction: rtl;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #8b929e;
+  line-height: 1.3;
+  margin-top: auto;
+}
+body.light-mode #main-content .home-news-card-meta,
+body.light-mode .home-news-card-meta {
+  color: #6b7280 !important;
+}
+.home-news-empty-box {
+  margin: 0 16px;
+  padding: 22px 16px;
+  text-align: center;
+  background: #131419;
+  border: 1px dashed #262936;
+  border-radius: 14px;
+  color: #8b929e;
+  font-size: 13px;
+  font-weight: 700;
+  direction: rtl;
+}
+body.light-mode .home-news-empty-box {
+  background: #ffffff !important;
+  border: 1px dashed #d1d5db !important;
+  color: #6b7280 !important;
+}
+
 /* Admin Add/Edit News Form */
 .news-form-card {
   background: #121318;
@@ -7659,7 +7840,7 @@ window.setupMoviesListener = function() {
           window.allContent.push(parsed);
           window.allContent.sort(window.compareMoviesOrder);
         }
-        const activeGrid = document.getElementById("categoryCardsGrid") || document.getElementById("homeExploreGrid");
+        const activeGrid = document.getElementById("categoryCardsGrid");
         if (activeGrid) {
           window.progressiveRenderItemIntoGrid(activeGrid, parsed);
         }
@@ -8048,8 +8229,10 @@ window.renderHome = () => {
     `;
   }).join("");
 
-  // 5. Explore Full Library Grid (all items)
-  const hourlyItems = window.getHourlyRotatingAnimes(30);
+  // 5. Latest News Horizontal Section (powered by live Firestore news feed)
+  const homeNewsBodyHtml = (typeof window.renderHomeNewsSectionBodyHtml === "function")
+    ? window.renderHomeNewsSectionBodyHtml()
+    : "";
 
   main.innerHTML = `
     <!-- 1. Hero Featured Slider -->
@@ -8106,17 +8289,16 @@ window.renderHome = () => {
       </div>
     </div>
 
-    <!-- 5. Explore All Content Section (3-Column Responsive Grid as requested) -->
-    <div class="home-section" style="padding-top:6px">
+    <!-- 5. Latest News Section -->
+    <div id="homeLatestNewsSection" class="home-section home-news-section">
       <div class="home-section-header">
         <div class="home-section-title-wrap">
-          <span class="home-section-icon">📺</span>
-          <h3 class="home-section-title">استكشف كافة الأعمال</h3>
+          <h3 class="home-section-title">آخر الأخبار</h3>
         </div>
-        <button type="button" class="home-section-more-btn" onclick="showPage('anime')">عرض المزيد ←</button>
+        <button type="button" class="home-section-more-btn home-news-more-btn" onclick="showPage('news')">عرض المزيد ←</button>
       </div>
-      <div id="homeExploreGrid" class="cards-grid-3">
-        ${hourlyItems.map(createCard).join("")}
+      <div id="homeNewsSectionBody">
+        ${homeNewsBodyHtml}
       </div>
     </div>
   `;
@@ -13285,6 +13467,8 @@ window.setupNewsListener = function() {
       if (savedScroll > 0) {
         window.scrollTo(0, savedScroll);
       }
+    } else if (currentPage === "home" && typeof window.refreshHomeNewsSectionDom === "function") {
+      window.refreshHomeNewsSectionDom();
     }
   };
 
@@ -13298,6 +13482,8 @@ window.setupNewsListener = function() {
         window._newsLoadError = err2 ? String(err2.message || "تعذر تحميل الأخبار") : "تعذر تحميل الأخبار";
         if (currentPage === "news") {
           window.renderNewsPage();
+        } else if (currentPage === "home" && typeof window.refreshHomeNewsSectionDom === "function") {
+          window.refreshHomeNewsSectionDom();
         }
       });
     } catch (e) {
@@ -13305,6 +13491,8 @@ window.setupNewsListener = function() {
       window._newsLoadError = String(e.message || "تعذر تحميل الأخبار");
       if (currentPage === "news") {
         window.renderNewsPage();
+      } else if (currentPage === "home" && typeof window.refreshHomeNewsSectionDom === "function") {
+        window.refreshHomeNewsSectionDom();
       }
     }
   };
@@ -13493,6 +13681,107 @@ window.renderSingleNewsCardHtml = function(newsItem) {
   `;
 };
 
+window.handleHomeNewsLinkClick = function(newsId) {
+  const newsItem = window.getNewsItemById(newsId);
+  if (!newsItem) return;
+  const linkedFid = String(newsItem.linkedContentId || "").trim();
+  if (linkedFid) {
+    window.openNewsLinkedWork(newsId);
+    return;
+  }
+  window.handleNewsCardClick(newsId);
+};
+
+window.handleHomeNewsCommentsClick = function(newsId) {
+  if (typeof window.openNewsComments === "function") {
+    window.openNewsComments(newsId);
+    return;
+  }
+  if (typeof window.showAppToast === "function") {
+    window.showAppToast("التعليقات غير مفعّلة على الأخبار حالياً", "💬");
+  }
+};
+
+window.renderHomeSingleNewsCardHtml = function(newsItem) {
+  const safeId = window.escapeDescHtml(newsItem.id);
+  const safeTitle = window.escapeDescHtml(newsItem.title || "");
+  const posterUrl = String(newsItem.poster || "").trim() || window.NEWS_POSTER_FALLBACK_SVG;
+  const safePosterAttr = window.escapeDescHtml(posterUrl);
+  const isCached = (typeof window.isPosterCached === "function") ? window.isPosterCached(posterUrl) : false;
+  const relativeTime = window.escapeDescHtml(window.formatNewsRelativeTime(newsItem.createdAtMs));
+  const hasLinkedWork = Boolean(newsItem.linkedContentId && String(newsItem.linkedContentId).trim());
+  const linkBtnLabel = hasLinkedWork ? "فتح صفحة العمل المرتبط" : "فتح رابط الخبر";
+
+  return `
+    <article class="home-news-card" data-home-news-id="${safeId}">
+      <div class="home-news-poster-box" onclick="window.handleNewsCardClick('${safeId}')">
+        <div class="news-poster-skeleton ${isCached ? 'hidden' : ''}"></div>
+        <img class="news-poster-img ${isCached ? 'loaded' : ''}"
+             src="${safePosterAttr}"
+             alt="${safeTitle}"
+             loading="lazy"
+             decoding="async"
+             onload="window.onNewsPosterLoaded(this)"
+             onerror="window.onNewsPosterError(this)">
+        <div class="home-news-overlay-icons" onclick="event.stopPropagation()">
+          <button type="button"
+                  class="home-news-circle-btn comment-btn"
+                  onclick="event.stopPropagation(); window.handleHomeNewsCommentsClick('${safeId}')"
+                  title="التعليقات"
+                  aria-label="التعليقات">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
+            </svg>
+          </button>
+          <button type="button"
+                  class="home-news-circle-btn link-btn"
+                  onclick="event.stopPropagation(); window.handleHomeNewsLinkClick('${safeId}')"
+                  title="${linkBtnLabel}"
+                  aria-label="${linkBtnLabel}">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div class="home-news-card-body" onclick="window.handleNewsCardClick('${safeId}')">
+        <h4 class="home-news-card-title" dir="rtl" title="${safeTitle}">${safeTitle}</h4>
+        <div class="home-news-card-meta">
+          <span>${relativeTime}</span>
+        </div>
+      </div>
+    </article>
+  `;
+};
+
+window.renderHomeNewsSectionBodyHtml = function() {
+  const items = window.allNewsItems || [];
+  if (!window._isInitialNewsLoaded && items.length === 0) {
+    return `<div class="home-news-empty-box">⏳ جاري تحميل آخر الأخبار...</div>`;
+  }
+  if (items.length === 0) {
+    return `<div class="home-news-empty-box">لا توجد أخبار منشورة حالياً</div>`;
+  }
+  return `
+    <div id="homeNewsCarousel" class="home-news-scroll-row">
+      ${items.map(window.renderHomeSingleNewsCardHtml).join("")}
+    </div>
+  `;
+};
+
+window.refreshHomeNewsSectionDom = function() {
+  const bodyContainer = document.getElementById("homeNewsSectionBody");
+  if (!bodyContainer) return;
+  const prevRow = document.getElementById("homeNewsCarousel");
+  const prevScrollLeft = prevRow ? prevRow.scrollLeft : 0;
+  bodyContainer.innerHTML = window.renderHomeNewsSectionBodyHtml();
+  const nextRow = document.getElementById("homeNewsCarousel");
+  if (nextRow && prevScrollLeft) {
+    nextRow.scrollLeft = prevScrollLeft;
+  }
+};
+
 window.renderNewsPage = function() {
   document.body.classList.remove("page-details-active", "page-episodes-active");
   document.body.classList.add("page-news-active");
@@ -13657,6 +13946,8 @@ window.confirmDeleteNewsItem = async function(newsId) {
     window.rebuildSortedNewsArray();
     if (currentPage === "news") {
       window.renderNewsPage();
+    } else if (currentPage === "home" && typeof window.refreshHomeNewsSectionDom === "function") {
+      window.refreshHomeNewsSectionDom();
     }
   } catch (err) {
     console.error("Failed to delete news item:", err);
