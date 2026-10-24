@@ -233,5 +233,27 @@ class ExampleRobolectricTest {
         assertTrue("Add News form must include work picker search & list", html.contains("""id="newsLinkedWorkSearchInput"""") && html.contains("""id="newsLinkedWorksList""""))
         assertTrue("Add News form must include save and cancel buttons", html.contains("""id="saveNewsItemBtn"""") && html.contains("""id="cancelNewsFormBtn""""))
     }
+
+    @Test
+    fun testSearchStatePersistenceAndBackNavigationIntegrity() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val html = context.assets.open("index.html").bufferedReader(Charsets.UTF_8).use { it.readText() }
+
+        // 1. Search session state model persists query, filter, resultFids, hasExecuted, and scrollY
+        assertTrue("Search session state object must exist", html.contains("window.searchSessionState"))
+        assertTrue("Search session state must store resultFids order", html.contains("window.searchSessionState.resultFids"))
+        assertTrue("Search session state must track scrollY", html.contains("window.searchSessionState.scrollY"))
+
+        // 2. Search page restoration preserves query, result order, and avoids unwanted autofocus
+        assertTrue("renderSearchPage must accept isRestoring parameter", html.contains("window.renderSearchPage = function(isRestoring = false)"))
+        assertTrue("performSearch must support preserveSavedOrder", html.contains("window.performSearch=(preserveSavedOrder = false)=>"))
+        assertTrue("openSearchBack must restore search page and scroll position", html.contains("window.openSearchBack=()=>{") && html.contains("window.restorePageScroll("))
+
+        // 3. Multi-step back navigation (Search -> Details -> Episodes -> Player -> Back -> Episodes -> Details -> Search)
+        assertTrue("openEpisodesBack must exist to restore episodes without pushing duplicate history", html.contains("window.openEpisodesBack=()=>{"))
+        assertTrue("Details back stack must support nested details navigation", html.contains("window._detailsBackStack"))
+        assertTrue("History stack helper must prevent duplicate consecutive entries", html.contains("window.pushHistoryEntrySafely = function(pageKey)"))
+        assertTrue("Input focus cleanup before navigation must clear stale IME focus flags", html.contains("window.clearActiveInputBeforeNav = function()"))
+    }
 }
 

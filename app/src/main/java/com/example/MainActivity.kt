@@ -396,9 +396,12 @@ class MainActivity : ComponentActivity() {
 
         ViewCompat.setOnApplyWindowInsetsListener(window.decorView) { _, insets ->
             val imeVisible = insets.isVisible(WindowInsetsCompat.Type.ime())
+            val wasKeyboardActive = isKeyboardActive
             isKeyboardActive = imeVisible
             if (imeVisible) {
                 isInputFocusedInWebView = true
+            } else if (wasKeyboardActive) {
+                isInputFocusedInWebView = false
             }
             insets
         }
@@ -1880,12 +1883,12 @@ class MainActivity : ComponentActivity() {
                 } else if (customView != null) {
                     webView.webChromeClient?.onHideCustomView()
                 } else {
-                    // Check if soft keyboard is currently open or user was typing
+                    // Check if soft keyboard is visibly open on screen
                     val imeVisible = ViewCompat.getRootWindowInsets(window.decorView)
                         ?.isVisible(WindowInsetsCompat.Type.ime()) == true
-                    if (imeVisible || isInputFocusedInWebView || isKeyboardActive) {
-                        // User pressed back while keyboard is open:
-                        // Just hide the keyboard, DO NOT close modal or navigate away!
+                    if (imeVisible) {
+                        // User pressed back while keyboard is visibly open:
+                        // Hide the keyboard without closing modal or navigating away
                         val insetsController = WindowCompat.getInsetsController(window, window.decorView)
                         insetsController.hide(WindowInsetsCompat.Type.ime())
                         isInputFocusedInWebView = false
@@ -1897,13 +1900,15 @@ class MainActivity : ComponentActivity() {
                         return
                     }
 
-                    // Check if active element in WebView is an input/textarea
+                    // Keyboard is already hidden: clear any stale input focus flags and navigate back cleanly
+                    isInputFocusedInWebView = false
+                    isKeyboardActive = false
+
                     webView.evaluateJavascript(
                         "(function() { " +
                         "  var active = document.activeElement; " +
-                        "  if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) { " +
+                        "  if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.tagName === 'SELECT' || active.isContentEditable)) { " +
                         "    active.blur(); " +
-                        "    return 'blurred'; " +
                         "  } " +
                         "  if (window.handleAppBack && window.handleAppBack()) { return 'handled'; } " +
                         "  if (window.historyStack && window.historyStack.length > 0) { window.goBack(); return 'goback'; } " +
