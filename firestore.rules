@@ -74,7 +74,9 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated() && request.auth.uid == userId && (
-        (request.resource.data.role != 'ADMIN' && request.resource.data.role != 'ASSISTANT') || isAdmin()
+        !('role' in request.resource.data) ||
+        (request.resource.data.role != 'ADMIN' && request.resource.data.role != 'ASSISTANT') ||
+        isAdmin()
       );
       allow update: if isAuthenticated() && request.auth.uid == userId && (
         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'photoURL', 'lastLoginAt', 'email']) || isAdmin())

@@ -95,6 +95,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             prefs.edit().putBoolean(KEY_NOTIFICATIONS_ENABLED, enabled).apply()
             try {
+                MainActivity.ensureFirebaseInitialized(context)
                 if (enabled) {
                     FirebaseMessaging.getInstance().subscribeToTopic("all_users")
                     FirebaseMessaging.getInstance().subscribeToTopic("anime_updates")
@@ -130,6 +131,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
          */
         fun syncDeviceRegistrationInFirestore(context: Context, token: String) {
             try {
+                MainActivity.ensureFirebaseInitialized(context)
                 val deviceId = getDeviceId(context)
                 val appEnabled = isAppNotificationsEnabled(context)
                 val sysEnabled = NotificationManagerCompat.from(context).areNotificationsEnabled()
@@ -173,6 +175,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
          * with full poster image, title, episode deep-link, and delivery receipt tracking.
          */
         fun startRealtimeBroadcastListener(context: Context) {
+            MainActivity.ensureFirebaseInitialized(context)
             val appContext = context.applicationContext
             getOrInitInstallTimestamp(appContext)
             if (firestoreBroadcastListener != null) return

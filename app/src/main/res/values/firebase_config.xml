@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Existing Firebase project configuration for hamza-4b70c -->
+    <!-- Kept under distinct resource names so adding app/google-services.json never causes duplicate resource conflicts -->
+    <string name="firebase_project_id" translatable="false">hamza-4b70c</string>
+    <string name="firebase_gcm_sender_id" translatable="false">595903053058</string>
+    <string name="firebase_storage_bucket" translatable="false">hamza-4b70c.firebasestorage.app</string>
+    <string name="firebase_fallback_app_id" translatable="false">1:595903053058:web:3745c8d9876284a4d4561b</string>
+    <string name="firebase_fallback_api_key" translatable="false">AIzaSyB_9ZOotR4uZtYYn08OSIZXJczM-WC0MM8</string>
+    <!-- Official Web OAuth 2.0 Client ID (type 3) configured in Firebase Auth for hamza-4b70c -->
+    <string name="firebase_web_client_id" translatable="false">595903053058-om6vigelenhg8374vr2ou28ksvlaanfi.apps.googleusercontent.com</string>
+</resources>

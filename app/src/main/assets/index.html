@@ -2647,6 +2647,24 @@ body.light-mode #topAvatarCircle {
   transform: scale(0.98);
   background: #f3f4f6;
 }
+.auth-google-btn:disabled {
+  opacity: 0.72;
+  cursor: not-allowed;
+  transform: none;
+}
+.auth-google-spinner {
+  width: 18px;
+  height: 18px;
+  border: 2.5px solid rgba(31, 41, 55, 0.22);
+  border-top-color: #e50914;
+  border-radius: 50%;
+  display: inline-block;
+  animation: authGoogleSpin 0.75s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes authGoogleSpin {
+  to { transform: rotate(360deg); }
+}
 .auth-forgot-link {
   display: inline-block;
   margin-top: 8px;
@@ -2667,12 +2685,45 @@ body.light-mode #topAvatarCircle {
   margin-bottom: 14px;
   text-align: right;
   display: none;
+  line-height: 1.55;
+  white-space: pre-line;
   animation: authFadeIn 0.25s ease-out;
 }
 .auth-alert-box.success {
   background: rgba(34, 197, 94, 0.14);
   border-color: rgba(34, 197, 94, 0.4);
   color: #86efac;
+}
+.auth-alert-box.info {
+  background: rgba(56, 189, 248, 0.13);
+  border-color: rgba(56, 189, 248, 0.4);
+  color: #bae6fd;
+}
+.auth-add-google-account-btn {
+  margin-top: 10px;
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  font-size: 12.5px;
+  font-weight: 800;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+body.light-mode .auth-alert-box.info {
+  background: rgba(2, 132, 199, 0.1);
+  border-color: rgba(2, 132, 199, 0.35);
+  color: #0369a1;
+}
+body.light-mode .auth-add-google-account-btn {
+  background: #1f2937;
+  color: #ffffff;
+  border-color: #111827;
 }
 
 /* Light mode for Auth Modal */
@@ -3797,6 +3848,17 @@ body.light-mode .news-work-option.selected {
         <button type="submit" id="btnLoginSubmit" class="auth-btn-primary">
           <span id="btnLoginText">تسجيل الدخول</span>
         </button>
+        <div class="auth-divider"><span>أو</span></div>
+        <button type="button" id="btnGoogleSignIn" class="auth-google-btn" onclick="handleGoogleSignInClick('login')">
+          <svg class="auth-google-icon" width="20" height="20" viewBox="0 0 48 48" aria-hidden="true">
+            <path fill="#FFC107" d="M43.611 20.083H42V20H24v8h11.303c-1.649 4.657-6.08 8-11.303 8-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.65-.389-3.917z"/>
+            <path fill="#FF3D00" d="M6.306 14.691l6.571 4.819C14.655 15.108 18.961 12 24 12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 16.318 4 9.656 8.337 6.306 14.691z"/>
+            <path fill="#4CAF50" d="M24 44c5.166 0 9.86-1.977 13.409-5.192l-6.19-5.238A11.91 11.91 0 0 1 24 36c-5.202 0-9.619-3.317-11.283-7.946l-6.522 5.025C9.505 39.556 16.227 44 24 44z"/>
+            <path fill="#1976D2" d="M43.611 20.083H42V20H24v8h11.303a12.04 12.04 0 0 1-4.087 5.571l.003-.002 6.19 5.238C36.971 39.205 44 34 44 24c0-1.341-.138-2.65-.389-3.917z"/>
+          </svg>
+          <span class="auth-google-spinner" style="display:none" aria-hidden="true"></span>
+          <span id="btnGoogleSignInText">المتابعة باستخدام Google</span>
+        </button>
       </form>
 
       <!-- Form: Register -->
@@ -3825,6 +3887,17 @@ body.light-mode .news-work-option.selected {
         </div>
         <button type="submit" id="btnRegisterSubmit" class="auth-btn-primary">
           <span id="btnRegisterText">إنشاء حساب جديد</span>
+        </button>
+        <div class="auth-divider"><span>أو</span></div>
+        <button type="button" id="btnGoogleRegister" class="auth-google-btn" onclick="handleGoogleSignInClick('register')">
+          <svg class="auth-google-icon" width="20" height="20" viewBox="0 0 48 48" aria-hidden="true">
+            <path fill="#FFC107" d="M43.611 20.083H42V20H24v8h11.303c-1.649 4.657-6.08 8-11.303 8-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.65-.389-3.917z"/>
+            <path fill="#FF3D00" d="M6.306 14.691l6.571 4.819C14.655 15.108 18.961 12 24 12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 16.318 4 9.656 8.337 6.306 14.691z"/>
+            <path fill="#4CAF50" d="M24 44c5.166 0 9.86-1.977 13.409-5.192l-6.19-5.238A11.91 11.91 0 0 1 24 36c-5.202 0-9.619-3.317-11.283-7.946l-6.522 5.025C9.505 39.556 16.227 44 24 44z"/>
+            <path fill="#1976D2" d="M43.611 20.083H42V20H24v8h11.303a12.04 12.04 0 0 1-4.087 5.571l.003-.002 6.19 5.238C36.971 39.205 44 34 44 24c0-1.341-.138-2.65-.389-3.917z"/>
+          </svg>
+          <span class="auth-google-spinner" style="display:none" aria-hidden="true"></span>
+          <span id="btnGoogleRegisterText">إنشاء حساب باستخدام Google</span>
         </button>
       </form>
 
@@ -6230,12 +6303,16 @@ onAuthStateChanged(auth, async (user) => {
     const isAssistantClaim = !isAdminClaimOrOwner && (claims.assistant === true || claims.role === "ASSISTANT" || claims.role === "EDITOR");
     window.currentAssistantClaim = isAssistantClaim;
 
-    // Read existing user document in Firestore to preserve any assigned role
+    // Read existing user document in Firestore to preserve any assigned role and custom profile fields
     let firestoreRole = "";
+    let existingUserDocExists = false;
+    let existingUserData = {};
     try {
       const userDocSnap = await getDoc(doc(db, "users", user.uid));
       if (userDocSnap.exists()) {
-        firestoreRole = userDocSnap.data().role || "";
+        existingUserDocExists = true;
+        existingUserData = userDocSnap.data() || {};
+        firestoreRole = existingUserData.role || "";
       }
     } catch (err) {
       console.warn("Firestore user role check error:", err);
@@ -6252,21 +6329,35 @@ onAuthStateChanged(auth, async (user) => {
     window.saveUserRole(targetRole);
     window.applyUserRole(targetRole);
 
-    // Sync user profile to Firestore users collection safely without stripping roles
+    // Sync user profile to Firestore users/{uid} safely in full compliance with security rules
     try {
-      const profileData = {
-        uid: user.uid,
-        email: user.email || "",
-        displayName: user.displayName || user.email?.split("@")[0] || "مستخدم",
-        photoURL: user.photoURL || "",
-        lastLoginAt: serverTimestamp()
-      };
-      if (isAdminClaimOrOwner) {
-        profileData.role = "ADMIN";
-      } else if (targetRole === "ASSISTANT") {
-        profileData.role = "ASSISTANT";
+      const fallbackName = (user.displayName || "").trim() || (user.email ? user.email.split("@")[0] : "") || "مستخدم";
+      const resolvedDisplayName = (existingUserData.displayName || "").trim() || fallbackName;
+      const resolvedPhotoURL = (existingUserData.photoURL || "").trim() || (user.photoURL || "").trim();
+
+      if (!existingUserDocExists) {
+        const createData = {
+          uid: user.uid,
+          email: user.email || "",
+          displayName: resolvedDisplayName,
+          photoURL: resolvedPhotoURL,
+          role: isAdminClaimOrOwner ? "ADMIN" : "USER",
+          createdAt: serverTimestamp(),
+          lastLoginAt: serverTimestamp()
+        };
+        await setDoc(doc(db, "users", user.uid), createData);
+      } else {
+        const updateData = {
+          email: user.email || existingUserData.email || "",
+          displayName: resolvedDisplayName,
+          photoURL: resolvedPhotoURL,
+          lastLoginAt: serverTimestamp()
+        };
+        if (isAdminClaimOrOwner && existingUserData.role !== "ADMIN") {
+          updateData.role = "ADMIN";
+        }
+        await updateDoc(doc(db, "users", user.uid), updateData);
       }
-      await setDoc(doc(db, "users", user.uid), profileData, { merge: true });
     } catch (err) {
       console.warn("Firestore profile sync error:", err);
     }
@@ -6295,6 +6386,15 @@ onAuthStateChanged(auth, async (user) => {
     window.currentFirestoreRole = "";
     window.saveUserRole("USER");
     window.applyUserRole("USER");
+    if (!window._silentGoogleRestoreChecked && !window._justLoggedOutManually &&
+        window.AndroidBridge && typeof window.AndroidBridge.requestSilentGoogleRestoreIfSignedIn === "function") {
+      window._silentGoogleRestoreChecked = true;
+      try {
+        window.AndroidBridge.requestSilentGoogleRestoreIfSignedIn();
+      } catch (restoreErr) {
+        console.warn("Silent Google session restore bridge warning:", restoreErr);
+      }
+    }
   }
 
   updateDrawerUserState();
@@ -6459,6 +6559,9 @@ window.closeAuthModal = function() {
     window.isAuthModalOpen = false;
     window._isAnyInputActiveFlag = false;
     notifyNativeInputFocusState(false);
+    if (typeof window.setGoogleButtonsLoading === "function" && !window._isGoogleAuthBusy) {
+      window.setGoogleButtonsLoading(false);
+    }
     clearAuthAlert();
   }
 };
@@ -6736,13 +6839,17 @@ window.togglePasswordVisibility = function(inputId, btn) {
   });
 };
 
-window.showAuthAlert = function(msg, isSuccess = false) {
+window.showAuthAlert = function(msg, variant = false) {
   const box = document.getElementById("authAlertBox");
   if (!box) return;
   box.textContent = msg;
   box.style.display = "block";
-  if (isSuccess) box.classList.add("success");
-  else box.classList.remove("success");
+  box.classList.remove("success", "info");
+  if (variant === true || variant === "success") {
+    box.classList.add("success");
+  } else if (variant === "info") {
+    box.classList.add("info");
+  }
   try {
     box.scrollIntoView({ behavior: "smooth", block: "nearest" });
   } catch (_) {}
@@ -6753,7 +6860,7 @@ window.clearAuthAlert = function() {
   if (box) {
     box.style.display = "none";
     box.textContent = "";
-    box.classList.remove("success");
+    box.classList.remove("success", "info");
   }
 };
 
@@ -6864,72 +6971,228 @@ window.handleAuthRegisterSubmit = async function(e) {
   }
 };
 
-window.handleGoogleSignInClick = async function() {
-  clearAuthAlert();
-  if (window.AndroidBridge && typeof window.AndroidBridge.signInWithGoogle === "function") {
-    // Native Android Credential Manager flow (zero popups, secure, Google Play compliant)
-    const btn = document.getElementById("btnGoogleSignIn");
-    if (btn) btn.disabled = true;
-    showAuthAlert("جاري فتح حسابات Google...", true);
+window._isGoogleAuthBusy = false;
+
+window.setGoogleButtonsLoading = function(isLoading, activeMode = "login") {
+  window._isGoogleAuthBusy = !!isLoading;
+  const loginGoogleBtn = document.getElementById("btnGoogleSignIn");
+  const regGoogleBtn = document.getElementById("btnGoogleRegister");
+  const loginGoogleText = document.getElementById("btnGoogleSignInText");
+  const regGoogleText = document.getElementById("btnGoogleRegisterText");
+  const loginSubmitBtn = document.getElementById("btnLoginSubmit");
+  const regSubmitBtn = document.getElementById("btnRegisterSubmit");
+
+  [loginGoogleBtn, regGoogleBtn].forEach((btn) => {
+    if (!btn) return;
+    btn.disabled = !!isLoading;
+    const icon = btn.querySelector(".auth-google-icon");
+    const spinner = btn.querySelector(".auth-google-spinner");
+    const isTargetBtn = (activeMode === "register" && btn === regGoogleBtn) || (activeMode !== "register" && btn === loginGoogleBtn);
+    if (icon) icon.style.display = (isLoading && isTargetBtn) ? "none" : "inline-block";
+    if (spinner) spinner.style.display = (isLoading && isTargetBtn) ? "inline-block" : "none";
+  });
+
+  if (loginSubmitBtn) loginSubmitBtn.disabled = !!isLoading;
+  if (regSubmitBtn) regSubmitBtn.disabled = !!isLoading;
+
+  if (loginGoogleText) {
+    loginGoogleText.textContent = (isLoading && activeMode !== "register")
+      ? "جاري المتابعة عبر Google..."
+      : "المتابعة باستخدام Google";
+  }
+  if (regGoogleText) {
+    regGoogleText.textContent = (isLoading && activeMode === "register")
+      ? "جاري إنشاء الحساب عبر Google..."
+      : "إنشاء حساب باستخدام Google";
+  }
+};
+
+window.openDeviceAddGoogleAccount = function() {
+  if (window.AndroidBridge && typeof window.AndroidBridge.openAddGoogleAccountSettings === "function") {
     try {
-      window.AndroidBridge.signInWithGoogle();
+      window.AndroidBridge.openAddGoogleAccountSettings();
     } catch (e) {
-      console.error("AndroidBridge signInWithGoogle error:", e);
-      if (btn) btn.disabled = false;
-      showAuthAlert("تعذر بدء تسجيل الدخول بحساب Google من التطبيق.");
+      console.error("openAddGoogleAccountSettings error:", e);
+    }
+  }
+};
+
+window.handleGoogleSignInClick = async function(mode = "login") {
+  if (window._isGoogleAuthBusy) {
+    return;
+  }
+  const normalizedMode = mode === "register" ? "register" : "login";
+  clearAuthAlert();
+
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    showAuthAlert("لا يوجد اتصال بالإنترنت حالياً. يرجى التحقق من الشبكة والمحاولة مجدداً.");
+    return;
+  }
+
+  if (window.AndroidBridge && (typeof window.AndroidBridge.signInWithGoogleMode === "function" || typeof window.AndroidBridge.signInWithGoogle === "function")) {
+    // Official Native Android Credential Manager flow (never opens external browser or WebView popup)
+    window.setGoogleButtonsLoading(true, normalizedMode);
+    showAuthAlert(
+      normalizedMode === "register"
+        ? "جاري فتح حسابات Google على الهاتف لإنشاء حسابك..."
+        : "جاري فتح حسابات Google على الهاتف...",
+      "info"
+    );
+    try {
+      if (typeof window.AndroidBridge.signInWithGoogleMode === "function") {
+        window.AndroidBridge.signInWithGoogleMode(normalizedMode);
+      } else {
+        window.AndroidBridge.signInWithGoogle();
+      }
+    } catch (e) {
+      console.error("AndroidBridge Google sign-in bridge error:", e);
+      window.setGoogleButtonsLoading(false, normalizedMode);
+      showAuthAlert("تعذر فتح نافذة اختيار حساب Google على هذا الجهاز. يرجى المحاولة مرة أخرى.");
     }
   } else {
-    // Standard web browser fallback
+    // Desktop/Web fallback only when running outside Android APK
+    window.setGoogleButtonsLoading(true, normalizedMode);
     const provider = new GoogleAuthProvider();
-    provider.setCustomParameters({ prompt: 'select_account' });
-
+    provider.setCustomParameters({ prompt: "select_account" });
     try {
-      await signInWithPopup(auth, provider);
+      const userCredential = await signInWithPopup(auth, provider);
+      if (!userCredential || !userCredential.user) {
+        throw new Error("لم تكتمل مصادقة Firebase بعد اختيار الحساب.");
+      }
+      window._justLoggedOutManually = false;
+      window.setGoogleButtonsLoading(false, normalizedMode);
+      clearAuthAlert();
       window.handlePostAuthSuccess();
     } catch (err) {
+      window.setGoogleButtonsLoading(false, normalizedMode);
+      if (err && (err.code === "auth/popup-closed-by-user" || err.code === "auth/cancelled-popup-request")) {
+        clearAuthAlert();
+        return;
+      }
       console.error("Google sign in error:", err);
       showAuthAlert(mapAuthErrorCodeToArabic(err));
     }
   }
 };
 
-window.onNativeGoogleSignInSuccess = async function(idToken) {
-  const btn = document.getElementById("btnGoogleSignIn");
-  if (btn) btn.disabled = false;
-  clearAuthAlert();
+window.onNativeGoogleAuthProgress = function(progressMsg) {
+  if (progressMsg) {
+    showAuthAlert(progressMsg, "info");
+  }
+};
 
-  if (!idToken || typeof idToken !== "string" || !idToken.trim()) {
-    console.error("onNativeGoogleSignInSuccess: received empty or invalid idToken");
-    showAuthAlert("لم يتم استلام رمز المصادقة (ID Token) لحساب Google.");
+window.onNativeGoogleSignInSuccess = async function(payloadOrToken) {
+  let idToken = "";
+  let nativeMeta = {};
+
+  if (typeof payloadOrToken === "string") {
+    const trimmed = payloadOrToken.trim();
+    if (trimmed.startsWith("{")) {
+      try {
+        nativeMeta = JSON.parse(trimmed) || {};
+        idToken = (nativeMeta.idToken || "").trim();
+      } catch (parseErr) {
+        console.error("Failed to parse native Google auth payload JSON");
+      }
+    } else {
+      idToken = trimmed;
+    }
+  } else if (payloadOrToken && typeof payloadOrToken === "object") {
+    nativeMeta = payloadOrToken;
+    idToken = String(nativeMeta.idToken || "").trim();
+  }
+
+  const activeMode = nativeMeta.mode === "register" ? "register" : "login";
+
+  if (!idToken) {
+    window.setGoogleButtonsLoading(false, activeMode);
+    console.error("onNativeGoogleSignInSuccess: missing Google ID token");
+    showAuthAlert("تعذر استلام رمز المصادقة الرسمي من حساب Google المختار.");
     return;
   }
 
-  showAuthAlert("تم اختيار الحساب بنجاح، جاري تأكيد المصادقة في Firebase...", true);
+  if (nativeMeta.mode !== "restore") {
+    showAuthAlert("جاري تأكيد جلسة المصادقة مع Firebase...", "info");
+  }
+
   try {
     if (!auth || typeof signInWithCredential !== "function" || !GoogleAuthProvider) {
-      throw new Error("نظام المصادقة (Firebase Auth) غير مهيأ حالياً.");
+      throw new Error("نظام مصادقة Firebase غير مهيأ حالياً.");
     }
     const credential = GoogleAuthProvider.credential(idToken);
     const userCredential = await signInWithCredential(auth, credential);
-    console.log("Firebase Google Sign-In success for:", userCredential?.user?.email);
+    const signedInUser = userCredential && userCredential.user ? userCredential.user : null;
+    if (!signedInUser || !signedInUser.uid) {
+      throw new Error("لم يتم تأكيد هوية المستخدم من Firebase Authentication.");
+    }
+
+    // Ensure Firebase user profile carries Google displayName & photoURL if missing
+    const googleName = String(nativeMeta.displayName || "").trim();
+    const googlePhoto = String(nativeMeta.photoUrl || "").trim();
+    if ((!signedInUser.displayName && googleName) || (!signedInUser.photoURL && googlePhoto)) {
+      try {
+        await updateProfile(signedInUser, {
+          displayName: signedInUser.displayName || googleName,
+          photoURL: signedInUser.photoURL || googlePhoto
+        });
+      } catch (profErr) {
+        console.warn("WebView updateProfile sync warning:", profErr);
+      }
+    }
+
+    window._justLoggedOutManually = false;
+    window.setGoogleButtonsLoading(false, activeMode);
     clearAuthAlert();
-    window.handlePostAuthSuccess();
+
+    if (nativeMeta.mode !== "restore") {
+      window.handlePostAuthSuccess();
+    }
   } catch (err) {
-    console.error("Firebase native credential sign-in error:", err);
-    if (btn) btn.disabled = false;
-    showAuthAlert(mapAuthErrorCodeToArabic(err));
+    console.error("Firebase signInWithCredential error:", err && err.code ? err.code : err);
+    window.setGoogleButtonsLoading(false, activeMode);
+    if (nativeMeta.mode !== "restore") {
+      showAuthAlert(mapAuthErrorCodeToArabic(err));
+    }
+  }
+};
+
+window.onNativeGoogleSignInCancelled = function() {
+  window.setGoogleButtonsLoading(false);
+  clearAuthAlert();
+};
+
+window.onNativeGoogleNoAccount = function(message) {
+  window.setGoogleButtonsLoading(false);
+  const box = document.getElementById("authAlertBox");
+  if (!box) return;
+  box.classList.remove("success", "info");
+  box.style.display = "block";
+  box.textContent = "";
+
+  const textDiv = document.createElement("div");
+  textDiv.textContent = message || "لا يوجد حساب Google مسجل حالياً على هذا الهاتف. أضف حساب Google إلى الجهاز ثم أعد المحاولة.";
+  box.appendChild(textDiv);
+
+  if (window.AndroidBridge && typeof window.AndroidBridge.openAddGoogleAccountSettings === "function") {
+    const addBtn = document.createElement("button");
+    addBtn.type = "button";
+    addBtn.className = "auth-add-google-account-btn";
+    addBtn.textContent = "➕ إضافة حساب Google إلى الهاتف";
+    addBtn.onclick = function() {
+      window.openDeviceAddGoogleAccount();
+    };
+    box.appendChild(addBtn);
   }
 };
 
 window.onNativeGoogleSignInFailure = function(errorMsg) {
-  const btn = document.getElementById("btnGoogleSignIn");
-  if (btn) btn.disabled = false;
-  console.warn("Native Google Sign-In failure callback:", errorMsg);
-  if (errorMsg === "تم إلغاء تسجيل الدخول") {
-    showAuthAlert("تم إلغاء تسجيل الدخول. يمكنك الضغط مجددًا على زر Google للمحاولة.");
+  window.setGoogleButtonsLoading(false);
+  if (errorMsg === "CANCELLED" || errorMsg === "تم إلغاء تسجيل الدخول") {
+    clearAuthAlert();
     return;
   }
-  showAuthAlert(errorMsg || "تعذر إكمال تسجيل الدخول عبر Google.");
+  console.warn("Native Google Sign-In failure callback:", errorMsg);
+  showAuthAlert(errorMsg || "تعذر إكمال تسجيل الدخول عبر Google. يرجى المحاولة مرة أخرى.");
 };
 
 async function checkFirebaseUserExists(email) {
@@ -7011,10 +7274,18 @@ window.handleAuthResetSubmit = async function(e) {
 
 window.logoutApp = async function() {
   if (confirm("هل أنت متأكد من رغبتك في تسجيل الخروج؟")) {
+    window._justLoggedOutManually = true;
     try {
       await signOut(auth);
     } catch (e) {
       console.warn("Sign out error:", e);
+    }
+    if (window.AndroidBridge && typeof window.AndroidBridge.signOutGoogle === "function") {
+      try {
+        window.AndroidBridge.signOutGoogle();
+      } catch (nativeSignOutErr) {
+        console.warn("Native Google signOut error:", nativeSignOutErr);
+      }
     }
     window._pendingWatchAction = null;
     clearUserRole();

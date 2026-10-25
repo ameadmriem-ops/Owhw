@@ -53,6 +53,8 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.webkit.WebViewAssetLoader
 import androidx.webkit.WebViewAssetLoader.AssetsPathHandler
+import android.provider.Settings
+import androidx.credentials.ClearCredentialStateRequest
 import androidx.credentials.CredentialManager
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.CustomCredential
@@ -63,10 +65,22 @@ import androidx.credentials.exceptions.GetCredentialInterruptedException
 import androidx.credentials.exceptions.GetCredentialProviderConfigurationException
 import androidx.credentials.exceptions.GetCredentialUnknownException
 import androidx.credentials.exceptions.NoCredentialException
+import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import com.google.firebase.FirebaseApp
+import com.google.firebase.FirebaseNetworkException
+import com.google.firebase.FirebaseOptions
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseAuthException
+import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
+import com.google.firebase.auth.FirebaseAuthInvalidUserException
+import com.google.firebase.auth.FirebaseAuthUserCollisionException
+import com.google.firebase.auth.GoogleAuthProvider
+import com.google.firebase.auth.UserProfileChangeRequest
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
@@ -294,6 +308,7 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         private const val TAG = "AdMob"
+        private const val AUTH_TAG = "GoogleAuth"
         private const val FCM_TAG = "FCM_Notification"
         const val DEFAULT_REWARDED_AD_UNIT_ID = "ca-app-pub-2277779478101583/1404104591"
         const val EPISODE_REWARDED_AD_UNIT_ID = "ca-app-pub-2277779478101583/9116970862"
@@ -303,7 +318,34 @@ class MainActivity : ComponentActivity() {
         const val ONE_DAY_MS = 24L * 60L * 60L * 1000L
         private const val NOTIFICATION_PERMISSION_REQUEST_CODE = 1002
         private const val STORAGE_PERMISSION_REQUEST_CODE = 1003
+        const val EXPECTED_PACKAGE_NAME = "com.aistudio.blackanime.qkxmr"
+        const val DEBUG_SHA1_FINGERPRINT = "2C:FE:25:4E:B1:75:4D:7D:86:81:70:92:E4:3F:3B:95:75:D6:98:83"
+        const val DEBUG_SHA256_FINGERPRINT = "ED:2D:3C:B9:2A:E9:53:25:41:96:D0:32:6B:26:5C:43:E7:25:34:C8:64:73:2A:BE:65:A9:79:ED:3E:10:D0:87"
+
+        @Synchronized
+        fun ensureFirebaseInitialized(context: Context) {
+            val appCtx = context.applicationContext ?: context
+            if (FirebaseApp.getApps(appCtx).isNotEmpty()) {
+                return
+            }
+            try {
+                val options = FirebaseOptions.Builder()
+                    .setProjectId(appCtx.getString(R.string.firebase_project_id))
+                    .setApplicationId(appCtx.getString(R.string.firebase_fallback_app_id))
+                    .setApiKey(appCtx.getString(R.string.firebase_fallback_api_key))
+                    .setGcmSenderId(appCtx.getString(R.string.firebase_gcm_sender_id))
+                    .setStorageBucket(appCtx.getString(R.string.firebase_storage_bucket))
+                    .build()
+                FirebaseApp.initializeApp(appCtx, options)
+                Log.d(AUTH_TAG, "FirebaseApp initialized with project=${options.projectId}")
+            } catch (e: Exception) {
+                Log.e(AUTH_TAG, "Failed to initialize fallback FirebaseApp: ${e.javaClass.simpleName}: ${e.message}")
+            }
+        }
     }
+
+    @Volatile
+    internal var isGoogleSignInInProgress: Boolean = false
 
     internal lateinit var webView: WebView
     private lateinit var assetLoader: WebViewAssetLoader
@@ -416,6 +458,8 @@ class MainActivity : ComponentActivity() {
             requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         }
         applyImmersiveFullScreen()
+
+        ensureFirebaseInitialized(this)
 
         // Initialize Notification Channel and FCM
         MyFirebaseMessagingService.createNotificationChannel(this)
@@ -3765,162 +3809,394 @@ class MainActivity : ComponentActivity() {
         @JavascriptInterface
         fun signInWithGoogle() {
             activity.runOnUiThread {
-                activity.launchNativeGoogleSignIn()
+                activity.launchNativeGoogleSignIn("login")
+            }
+        }
+
+        @JavascriptInterface
+        fun signInWithGoogleMode(mode: String?) {
+            val normalizedMode = if (mode == "register") "register" else "login"
+            activity.runOnUiThread {
+                activity.launchNativeGoogleSignIn(normalizedMode)
+            }
+        }
+
+        @JavascriptInterface
+        fun signOutGoogle() {
+            activity.runOnUiThread {
+                activity.signOutGoogleNative()
+            }
+        }
+
+        @JavascriptInterface
+        fun openAddGoogleAccountSettings() {
+            activity.runOnUiThread {
+                activity.launchSystemAddGoogleAccount()
+            }
+        }
+
+        @JavascriptInterface
+        fun requestSilentGoogleRestoreIfSignedIn() {
+            activity.runOnUiThread {
+                activity.attemptSilentGoogleSessionRestoreIfNeeded()
             }
         }
     }
 
-    fun launchNativeGoogleSignIn() {
-        val serverClientId = "595903053058-om6vigelenhg8374vr2ou28ksvlaanfi.apps.googleusercontent.com"
+    internal fun resolveGoogleServerClientId(): String {
+        return getString(R.string.firebase_web_client_id).trim()
+    }
+
+    fun launchSystemAddGoogleAccount() {
+        try {
+            val addAccountIntent = Intent(Settings.ACTION_ADD_ACCOUNT).apply {
+                putExtra(Settings.EXTRA_ACCOUNT_TYPES, arrayOf("com.google"))
+            }
+            startActivity(addAccountIntent)
+        } catch (e: Exception) {
+            Log.w(AUTH_TAG, "ACTION_ADD_ACCOUNT with com.google unavailable, falling back to sync settings: ${e.javaClass.simpleName}")
+            try {
+                startActivity(Intent(Settings.ACTION_SYNC_SETTINGS))
+            } catch (fallbackErr: Exception) {
+                Log.e(AUTH_TAG, "Unable to open system account settings: ${fallbackErr.message}")
+                Toast.makeText(
+                    this,
+                    "يرجى فتح إعدادات الهاتف ← الحسابات ← إضافة حساب Google",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+    }
+
+    fun signOutGoogleNative() {
+        ensureFirebaseInitialized(this)
+        try {
+            FirebaseAuth.getInstance().signOut()
+        } catch (e: Exception) {
+            Log.w(AUTH_TAG, "FirebaseAuth native signOut warning: ${e.javaClass.simpleName}")
+        }
         val credentialManager = CredentialManager.create(this)
-        val signInOption = GetSignInWithGoogleOption.Builder(serverClientId).build()
+        lifecycleScope.launch {
+            try {
+                credentialManager.clearCredentialState(ClearCredentialStateRequest())
+                Log.d(AUTH_TAG, "Cleared CredentialManager session state successfully")
+            } catch (e: Exception) {
+                Log.w(AUTH_TAG, "CredentialManager clearCredentialState warning: ${e.javaClass.simpleName}")
+            }
+        }
+    }
+
+    fun attemptSilentGoogleSessionRestoreIfNeeded() {
+        if (isGoogleSignInInProgress) return
+        ensureFirebaseInitialized(this)
+        val nativeUser = try {
+            FirebaseAuth.getInstance().currentUser
+        } catch (e: Exception) {
+            null
+        } ?: return
+
+        val isGoogleLinked = nativeUser.providerData.any { it.providerId == GoogleAuthProvider.PROVIDER_ID }
+        if (!isGoogleLinked) return
+
+        val serverClientId = resolveGoogleServerClientId()
+        if (serverClientId.isBlank()) return
+
+        val googleIdOption = GetGoogleIdOption.Builder()
+            .setFilterByAuthorizedAccounts(true)
+            .setServerClientId(serverClientId)
+            .setAutoSelectEnabled(true)
+            .build()
+        val request = GetCredentialRequest.Builder()
+            .addCredentialOption(googleIdOption)
+            .build()
+
+        val credentialManager = CredentialManager.create(this)
+        lifecycleScope.launch {
+            try {
+                val result = credentialManager.getCredential(
+                    context = this@MainActivity,
+                    request = request
+                )
+                val googleCred = extractGoogleIdTokenCredential(result.credential) ?: return@launch
+                completeFirebaseAuthAndNotifyWebView(googleCred, mode = "restore")
+            } catch (e: Exception) {
+                Log.d(AUTH_TAG, "Silent Google session restore skipped: ${e.javaClass.simpleName}")
+            }
+        }
+    }
+
+    private fun extractGoogleIdTokenCredential(credential: androidx.credentials.Credential): GoogleIdTokenCredential? {
+        return when {
+            credential is GoogleIdTokenCredential -> credential
+            credential is CustomCredential &&
+                (credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL ||
+                 credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_SIWG_CREDENTIAL) -> {
+                try {
+                    GoogleIdTokenCredential.createFrom(credential.data)
+                } catch (e: Exception) {
+                    Log.e(AUTH_TAG, "Failed to parse GoogleIdTokenCredential bundle [${e.javaClass.simpleName}]")
+                    null
+                }
+            }
+            else -> {
+                val credType = (credential as? CustomCredential)?.type ?: "unknown"
+                Log.e(AUTH_TAG, "Unsupported credential returned: class=${credential.javaClass.simpleName}, type=$credType")
+                null
+            }
+        }
+    }
+
+    private suspend fun completeFirebaseAuthAndNotifyWebView(
+        googleCred: GoogleIdTokenCredential,
+        mode: String
+    ) {
+        val idToken = googleCred.idToken
+        if (idToken.isBlank()) {
+            dispatchGoogleSignInFailureToWebView("تعذر استخراج بيانات التحقق الرسمية من حساب Google.")
+            return
+        }
+
+        // Notify UI that account was picked and Firebase authentication is now running (do NOT mark signed in yet)
+        runOnUiThread {
+            val progressMsg = if (mode == "register") {
+                "جاري التحقق وإنشاء الحساب في Firebase..."
+            } else {
+                "جاري التحقق وتأكيد المصادقة مع Firebase..."
+            }
+            val jsProgress = "if(typeof window.onNativeGoogleAuthProgress==='function'){window.onNativeGoogleAuthProgress(${JSONObject.quote(progressMsg)});}"
+            webView.evaluateJavascript(jsProgress, null)
+        }
+
+        ensureFirebaseInitialized(this@MainActivity)
+        val firebaseAuth = FirebaseAuth.getInstance()
+        val firebaseCredential = GoogleAuthProvider.getCredential(idToken, null)
+        val authResult = firebaseAuth.signInWithCredential(firebaseCredential).await()
+        val firebaseUser = authResult.user
+            ?: throw IllegalStateException("Firebase Authentication completed without returning a valid FirebaseUser.")
+
+        val fallbackName = googleCred.displayName?.trim().orEmpty()
+        val fallbackPhotoUri = googleCred.profilePictureUri
+        if ((firebaseUser.displayName.isNullOrBlank() && fallbackName.isNotEmpty()) ||
+            (firebaseUser.photoUrl == null && fallbackPhotoUri != null)
+        ) {
+            try {
+                val profileUpdate = UserProfileChangeRequest.Builder().apply {
+                    if (firebaseUser.displayName.isNullOrBlank() && fallbackName.isNotEmpty()) {
+                        displayName = fallbackName
+                    }
+                    if (firebaseUser.photoUrl == null && fallbackPhotoUri != null) {
+                        photoUri = fallbackPhotoUri
+                    }
+                }.build()
+                firebaseUser.updateProfile(profileUpdate).await()
+            } catch (profileErr: Exception) {
+                Log.w(AUTH_TAG, "Optional FirebaseUser profile sync warning: ${profileErr.javaClass.simpleName}")
+            }
+        }
+
+        val isNewUser = authResult.additionalUserInfo?.isNewUser == true
+        Log.i(
+            AUTH_TAG,
+            "Firebase Google signInWithCredential succeeded: uid=${firebaseUser.uid}, isNewUser=$isNewUser"
+        )
+
+        val payload = JSONObject().apply {
+            put("idToken", idToken)
+            put("uid", firebaseUser.uid)
+            put("email", firebaseUser.email ?: googleCred.id)
+            put("displayName", firebaseUser.displayName ?: fallbackName)
+            put("photoUrl", (firebaseUser.photoUrl ?: fallbackPhotoUri)?.toString().orEmpty())
+            put("isNewUser", isNewUser)
+            put("mode", mode)
+        }
+
+        runOnUiThread {
+            val jsCode = """
+                (function() {
+                    try {
+                        if (typeof window.onNativeGoogleSignInSuccess === 'function') {
+                            window.onNativeGoogleSignInSuccess(${JSONObject.quote(payload.toString())});
+                            return 'ok';
+                        }
+                        return 'not_found';
+                    } catch (err) {
+                        console.error('Error invoking onNativeGoogleSignInSuccess:', err);
+                        return 'error';
+                    }
+                })();
+            """.trimIndent()
+            webView.evaluateJavascript(jsCode, null)
+        }
+    }
+
+    fun launchNativeGoogleSignIn(mode: String = "login") {
+        if (isGoogleSignInInProgress) {
+            Log.d(AUTH_TAG, "Ignoring duplicate Google Sign-In tap while request is already in progress")
+            return
+        }
+        val serverClientId = resolveGoogleServerClientId()
+        if (serverClientId.isBlank() || !serverClientId.endsWith(".apps.googleusercontent.com")) {
+            Log.e(AUTH_TAG, "Invalid Web OAuth Client ID configuration")
+            dispatchGoogleSignInFailureToWebView("معرّف عميل الويب (Web Client ID) غير مهيأ بشكل صحيح في التطبيق.")
+            return
+        }
+
+        isGoogleSignInInProgress = true
+        val credentialManager = CredentialManager.create(this)
+        // Official Android Credential Manager Sign in with Google bottom sheet:
+        // Lists available Google accounts on the phone AND provides "Add another account" natively without opening a browser.
+        val signInOption = GetSignInWithGoogleOption.Builder(serverClientId = serverClientId).build()
         val request = GetCredentialRequest.Builder()
             .addCredentialOption(signInOption)
             .build()
 
         lifecycleScope.launch {
             try {
-                Log.d(TAG, "Native Google Sign-In: Requesting credentials via CredentialManager with serverClientId=$serverClientId")
+                Log.d(
+                    AUTH_TAG,
+                    "Launching CredentialManager Sign in with Google (package=$packageName, mode=$mode)"
+                )
                 val result = credentialManager.getCredential(
                     request = request,
                     context = this@MainActivity
                 )
-                val credential = result.credential
-                Log.d(TAG, "Native Google Sign-In: Received credential class=${credential.javaClass.name}")
-
-                val idToken: String? = when {
-                    credential is GoogleIdTokenCredential -> {
-                        Log.d(TAG, "Native Google Sign-In: Direct GoogleIdTokenCredential for user=${credential.id}")
-                        credential.idToken
-                    }
-                    credential is CustomCredential &&
-                        (credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL ||
-                         credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_SIWG_CREDENTIAL) -> {
-                        try {
-                            val googleIdTokenCredential = GoogleIdTokenCredential.createFrom(credential.data)
-                            Log.d(TAG, "Native Google Sign-In: Extracted GoogleIdTokenCredential from Bundle for user=${googleIdTokenCredential.id}")
-                            googleIdTokenCredential.idToken
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Native Google Sign-In: Failed to parse GoogleIdTokenCredential from Bundle: ${e.message}", e)
-                            null
-                        }
-                    }
-                    else -> {
-                        val credType = (credential as? CustomCredential)?.type ?: "unknown"
-                        Log.e(TAG, "Native Google Sign-In: Unsupported credential class=${credential.javaClass.name}, type=$credType")
-                        null
-                    }
+                val googleCred = extractGoogleIdTokenCredential(result.credential)
+                if (googleCred == null) {
+                    dispatchGoogleSignInFailureToWebView("تعذر قراءة بيانات الاعتماد الرسمية لحساب Google المختار.")
+                    return@launch
                 }
 
-                if (!idToken.isNullOrBlank()) {
-                    Log.d(TAG, "Native Google Sign-In: ID Token obtained successfully (length=${idToken.length}). Dispatching to WebView...")
+                completeFirebaseAuthAndNotifyWebView(googleCred, mode)
+            } catch (e: GetCredentialCancellationException) {
+                if (isTrueUserCancellation(e)) {
+                    Log.i(AUTH_TAG, "User cancelled Google account picker without selecting an account")
                     runOnUiThread {
-                        val jsCode = """
+                        val jsCancel = """
                             (function() {
-                                try {
-                                    if (typeof window.onNativeGoogleSignInSuccess === 'function') {
-                                        window.onNativeGoogleSignInSuccess(${JSONObject.quote(idToken)});
-                                        return 'ok';
-                                    } else {
-                                        console.error('onNativeGoogleSignInSuccess is not defined on window');
-                                        return 'not_found';
-                                    }
-                                } catch (err) {
-                                    console.error('Error invoking onNativeGoogleSignInSuccess:', err);
-                                    return 'error: ' + err.message;
+                                if (typeof window.onNativeGoogleSignInCancelled === 'function') {
+                                    window.onNativeGoogleSignInCancelled();
+                                } else if (typeof window.onNativeGoogleSignInFailure === 'function') {
+                                    window.onNativeGoogleSignInFailure('CANCELLED');
                                 }
                             })();
                         """.trimIndent()
-                        webView.evaluateJavascript(jsCode) { evalRes ->
-                            Log.d(TAG, "Native Google Sign-In: onNativeGoogleSignInSuccess evaluateJavascript response: $evalRes")
-                        }
+                        webView.evaluateJavascript(jsCancel, null)
                     }
                 } else {
-                    val failureMsg = "تعذر استخراج رمز التحقق من حساب Google (ID Token)."
-                    Log.e(TAG, "Native Google Sign-In: $failureMsg")
+                    Log.e(
+                        AUTH_TAG,
+                        "Google Sign-In failed with configuration error surfaced as cancellation [${e.javaClass.simpleName}]: ${sanitizeDiagnosticMessage(e.message)}"
+                    )
+                    val configMsg = formatGoogleSignInErrorMessage(e)
+                    dispatchGoogleSignInFailureToWebView(configMsg, showToast = true)
+                }
+            } catch (e: NoCredentialException) {
+                val sanitized = sanitizeDiagnosticMessage(e.message)
+                Log.w(AUTH_TAG, "NoCredentialException during Google Sign-In: $sanitized")
+                if (isOAuthConfigurationMismatchMessage(e.message)) {
+                    dispatchGoogleSignInFailureToWebView(formatGoogleSignInErrorMessage(e), showToast = true)
+                } else {
+                    val noAccountMsg =
+                        "لم يتم العثور على حساب Google جاهز على هذا الجهاز (أو لم تُسجَّل بصمة SHA-1 للتطبيق بعد في Firebase). يمكنك إضافة حساب Google إلى الهاتف ثم المحاولة مجدداً."
                     runOnUiThread {
-                        Toast.makeText(this@MainActivity, failureMsg, Toast.LENGTH_SHORT).show()
-                        val jsCode = """
+                        val jsNoAccount = """
                             (function() {
-                                try {
-                                    if (typeof window.onNativeGoogleSignInFailure === 'function') {
-                                        window.onNativeGoogleSignInFailure(${JSONObject.quote(failureMsg)});
-                                        return 'ok';
-                                    }
-                                } catch (err) {
-                                    console.error('Error invoking onNativeGoogleSignInFailure:', err);
+                                if (typeof window.onNativeGoogleNoAccount === 'function') {
+                                    window.onNativeGoogleNoAccount(${JSONObject.quote(noAccountMsg)});
+                                } else if (typeof window.onNativeGoogleSignInFailure === 'function') {
+                                    window.onNativeGoogleSignInFailure(${JSONObject.quote(noAccountMsg)});
                                 }
                             })();
                         """.trimIndent()
-                        webView.evaluateJavascript(jsCode, null)
+                        webView.evaluateJavascript(jsNoAccount, null)
                     }
-                }
-            } catch (e: GetCredentialCancellationException) {
-                Log.w(TAG, "Native Google Sign-In: User cancelled the sign-in selector: ${e.message}")
-                runOnUiThread {
-                    val jsCode = """
-                        (function() {
-                            try {
-                                if (typeof window.onNativeGoogleSignInFailure === 'function') {
-                                    window.onNativeGoogleSignInFailure('تم إلغاء تسجيل الدخول');
-                                }
-                            } catch (err) {
-                                console.error('Error invoking onNativeGoogleSignInFailure (cancel):', err);
-                            }
-                        })();
-                    """.trimIndent()
-                    webView.evaluateJavascript(jsCode, null)
                 }
             } catch (e: Throwable) {
-                val exceptionName = e.javaClass.simpleName
-                val rawMessage = e.message ?: "Unknown error"
-                Log.e(TAG, "Native Google Sign-In failed [$exceptionName]: $rawMessage", e)
-
+                val errCode = (e as? FirebaseAuthException)?.errorCode ?: (e as? GetCredentialException)?.type ?: e.javaClass.simpleName
+                Log.e(
+                    AUTH_TAG,
+                    "Google Sign-In / FirebaseAuth failed [code=$errCode, class=${e.javaClass.simpleName}]: ${sanitizeDiagnosticMessage(e.message)}"
+                )
                 val userMessage = formatGoogleSignInErrorMessage(e)
-                runOnUiThread {
-                    Toast.makeText(this@MainActivity, userMessage, Toast.LENGTH_LONG).show()
-                    val jsCode = """
-                        (function() {
-                            try {
-                                if (typeof window.onNativeGoogleSignInFailure === 'function') {
-                                    window.onNativeGoogleSignInFailure(${JSONObject.quote(userMessage)});
-                                    return 'ok';
-                                } else {
-                                    console.error('onNativeGoogleSignInFailure is not defined on window');
-                                    return 'not_found';
-                                }
-                            } catch (err) {
-                                console.error('Error invoking onNativeGoogleSignInFailure:', err);
-                                return 'error: ' + err.message;
-                            }
-                        })();
-                    """.trimIndent()
-                    webView.evaluateJavascript(jsCode) { evalRes ->
-                        Log.d(TAG, "Native Google Sign-In: onNativeGoogleSignInFailure evaluateJavascript response: $evalRes")
-                    }
-                }
+                dispatchGoogleSignInFailureToWebView(userMessage, showToast = true)
+            } finally {
+                isGoogleSignInInProgress = false
             }
         }
     }
 
-    private fun formatGoogleSignInErrorMessage(e: Throwable): String {
+    private fun dispatchGoogleSignInFailureToWebView(message: String, showToast: Boolean = false) {
+        runOnUiThread {
+            if (showToast) {
+                Toast.makeText(this@MainActivity, message, Toast.LENGTH_LONG).show()
+            }
+            val jsCode = """
+                (function() {
+                    try {
+                        if (typeof window.onNativeGoogleSignInFailure === 'function') {
+                            window.onNativeGoogleSignInFailure(${JSONObject.quote(message)});
+                        }
+                    } catch (err) {
+                        console.error('Error invoking onNativeGoogleSignInFailure:', err);
+                    }
+                })();
+            """.trimIndent()
+            webView.evaluateJavascript(jsCode, null)
+        }
+    }
+
+    internal fun sanitizeDiagnosticMessage(raw: String?): String {
+        if (raw.isNullOrBlank()) return "no_message"
+        // Redact any long JWT/Bearer-like token segments so tokens never leak in logs
+        return raw.replace(Regex("""eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+"""), "[REDACTED_TOKEN]")
+    }
+
+    internal fun isOAuthConfigurationMismatchMessage(rawMsg: String?): Boolean {
+        if (rawMsg.isNullOrBlank()) return false
+        return rawMsg.contains("28444") ||
+            rawMsg.contains("Developer console is not set up correctly", ignoreCase = true) ||
+            rawMsg.contains("10:") ||
+            rawMsg.contains("DEVELOPER_ERROR", ignoreCase = true) ||
+            rawMsg.contains("12500")
+    }
+
+    internal fun isTrueUserCancellation(e: GetCredentialCancellationException): Boolean {
+        return !isOAuthConfigurationMismatchMessage(e.message)
+    }
+
+    internal fun formatGoogleSignInErrorMessage(e: Throwable): String {
         val rawMsg = e.message ?: ""
         val className = e.javaClass.simpleName
+        if (e is FirebaseAuthException) {
+            return when (e.errorCode) {
+                "ERROR_OPERATION_NOT_ALLOWED" ->
+                    "مزود تسجيل الدخول عبر Google غير مفعّل في Firebase Authentication. يرجى تفعيله من Firebase Console ← Authentication ← Sign-in method."
+                "ERROR_USER_DISABLED" ->
+                    "تم تعطيل هذا الحساب من قبل إدارة التطبيق."
+                "ERROR_ACCOUNT_EXISTS_WITH_DIFFERENT_CREDENTIAL" ->
+                    "يوجد حساب مسجل مسبقاً بنفس البريد الإلكتروني بطريقة دخول مختلفة."
+                "ERROR_INVALID_CREDENTIAL" ->
+                    "بيانات اعتماد Google غير صالحة أو منتهية الصلاحية، أو أن عميل OAuth في Firebase غير متطابق."
+                "ERROR_TOO_MANY_REQUESTS" ->
+                    "تم إيقاف المحاولات مؤقتاً بسبب كثرة الطلبات. يرجى الانتظار قليلاً والمحاولة مجدداً."
+                else ->
+                    "تعذر إتمام مصادقة Firebase (${e.errorCode}). يرجى التحقق من إعدادات تطبيق الأندرويد وبصمة SHA-1 في Firebase Console."
+            }
+        }
+        if (e is FirebaseNetworkException) {
+            return "تعذر الاتصال بخوادم المصادقة. يرجى التحقق من اتصال الإنترنت والمحاولة مجدداً."
+        }
         return when {
-            rawMsg.contains("10:") || rawMsg.contains("DEVELOPER_ERROR", ignoreCase = true) ->
-                "خطأ في مطابقة شهادة التطبيق (Developer Error 10): يلزم إضافة بصمة SHA-1 الخاصة بالتطبيق (9C:BB:DC:B9:FC:37:CA:66:1C:49:45:1D:87:E2:8D:2C:CE:C7:6D:CE) واسم الحزمة (com.aistudio.iptvlive.qkxmr) في إعدادات مشروع Firebase Console."
-            rawMsg.contains("16:") || rawMsg.contains("Cannot find a matching credential", ignoreCase = true) ->
-                "تعذر العثور على حساب Google متطابق، أو أن Web Client ID غير متطابق مع هذا المشروع."
-            rawMsg.contains("7:") || rawMsg.contains("NETWORK", ignoreCase = true) ->
-                "خطأ في الاتصال بالإنترنت أثناء التواصل مع خدمات Google Play."
-            rawMsg.contains("12500") ->
-                "فشل تسجيل الدخول من خلال Google Play Services (رمز 12500)."
+            isOAuthConfigurationMismatchMessage(rawMsg) ->
+                "إعداد OAuth لتطبيق الأندرويد غير مكتمل في Firebase Console (مشروع hamza-4b70c): يلزم تسجيل الحزمة ($EXPECTED_PACKAGE_NAME) وبصمة الشهادة SHA-1 ($DEBUG_SHA1_FINGERPRINT) و SHA-256 ($DEBUG_SHA256_FINGERPRINT)."
+            rawMsg.contains("7:") || rawMsg.contains("NETWORK", ignoreCase = true) || e is GetCredentialInterruptedException ->
+                "انقطع الاتصال بخدمات Google Play أثناء المصادقة. يرجى التحقق من الإنترنت والمحاولة مرة أخرى."
             e is GetCredentialProviderConfigurationException ->
-                "مزود المصادقة غير مهيأ بشكل صحيح على الجهاز (ProviderConfigurationException)."
+                "خدمات Google Play أو مدير بيانات الاعتماد (Credential Manager) غير مهيأ أو يحتاج إلى تحديث على هذا الجهاز."
             e is NoCredentialException ->
-                "لا توجد بيانات اعتماد متاحة لحساب Google في هذا الجهاز."
+                "لا يوجد حساب Google مسجل على هذا الجهاز حالياً، أو لم تُضف بصمة SHA-1 للحزمة ($EXPECTED_PACKAGE_NAME) في Firebase Console."
             else ->
-                "فشل تسجيل الدخول عبر Google ($className): ${e.localizedMessage ?: "حدث خطأ غير متوقع"}"
+                "تعذر إكمال تسجيل الدخول عبر Google ($className). يرجى المحاولة مرة أخرى."
         }
     }
 }

@@ -390,6 +390,87 @@ class ExampleRobolectricTest {
         assertTrue("Fallback watch must include new Video Direction button", html.contains("""id="fallbackRotateVideoBtn"""") && html.contains("window.toggleFallbackVideoDirection()"))
         assertTrue("Leaving fallback watch must restore Portrait orientation", html.contains("window.exitFallbackWatchMode") && html.contains("window.AndroidBridge.exitWatchLandscape()"))
     }
+
+    @Test
+    fun testGoogleSignInFirebaseConfigDiagnosticsAndAssets() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+
+        // 1. Verify Firebase initialization binds to existing hamza-4b70c project
+        MainActivity.ensureFirebaseInitialized(context)
+        val firebaseApps = com.google.firebase.FirebaseApp.getApps(context)
+        assertTrue("FirebaseApp must be initialized for hamza-4b70c", firebaseApps.isNotEmpty())
+        val defaultApp = com.google.firebase.FirebaseApp.getInstance()
+        assertEquals("Firebase project ID must remain hamza-4b70c", "hamza-4b70c", defaultApp.options.projectId)
+        assertEquals("GCM sender ID must match hamza-4b70c project number", "595903053058", defaultApp.options.gcmSenderId)
+
+        // 2. Verify Activity configuration, Web Client ID, cancellation vs OAuth error diagnostics, token sanitization, and Add Account intent
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        val activity = controller.get()
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertEquals(
+            "Application package name must match expected Android app ID",
+            MainActivity.EXPECTED_PACKAGE_NAME,
+            activity.packageName
+        )
+        val webClientId = activity.resolveGoogleServerClientId()
+        assertEquals(
+            "Web Client ID must match hamza-4b70c Web OAuth 2.0 Client ID",
+            "595903053058-om6vigelenhg8374vr2ou28ksvlaanfi.apps.googleusercontent.com",
+            webClientId
+        )
+
+        // True user cancellation vs OAuth SHA-1 mismatch disguised as cancellation
+        val realCancel = androidx.credentials.exceptions.GetCredentialCancellationException("activity is cancelled by the user.")
+        assertTrue("Genuine user dismissal must be treated as clean cancellation", activity.isTrueUserCancellation(realCancel))
+
+        val shaMismatchCancel = androidx.credentials.exceptions.GetCredentialCancellationException(
+            "[28444] Developer console is not set up correctly."
+        )
+        assertFalse("28444 OAuth/SHA-1 error must NOT be treated as user cancellation", activity.isTrueUserCancellation(shaMismatchCancel))
+        val formattedShaErr = activity.formatGoogleSignInErrorMessage(shaMismatchCancel)
+        assertTrue("OAuth error message must mention hamza-4b70c and SHA-1", formattedShaErr.contains("hamza-4b70c") && formattedShaErr.contains(MainActivity.DEBUG_SHA1_FINGERPRINT))
+
+        // Token redaction in logs
+        val fakeJwt = "eyJhbGciOiJSUzI1NiIsImtpZCI6IjEyMyJ9.eyJzdWIiOiJ1c2VyXzEyMyIsImVtYWlsIjoidGVzdEBleGFtcGxlLmNvbSJ9.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+        val sanitized = activity.sanitizeDiagnosticMessage("Token failure: $fakeJwt")
+        assertFalse("Raw JWT must never remain in diagnostic logs", sanitized.contains(fakeJwt))
+        assertTrue("Sanitized log must contain [REDACTED_TOKEN]", sanitized.contains("[REDACTED_TOKEN]"))
+
+        // Duplicate tap guard
+        activity.isGoogleSignInInProgress = true
+        activity.launchNativeGoogleSignIn("login")
+        assertTrue("In-progress guard must stay active and block duplicate tap", activity.isGoogleSignInInProgress)
+        activity.isGoogleSignInInProgress = false
+
+        // Add Google Account system intent
+        activity.launchSystemAddGoogleAccount()
+        val nextIntent = shadowOf(activity).nextStartedActivity
+        assertNotNull("Add Google Account must launch system account intent", nextIntent)
+        assertEquals(android.provider.Settings.ACTION_ADD_ACCOUNT, nextIntent.action)
+        val accountTypes = nextIntent.getStringArrayExtra(android.provider.Settings.EXTRA_ACCOUNT_TYPES)
+        assertNotNull(accountTypes)
+        assertTrue("Intent must target com.google account type", accountTypes!!.contains("com.google"))
+
+        // 3. Verify index.html Google buttons, Firebase signInWithCredential flow, Email/Password preservation, and logout cleanup
+        val html = context.assets.open("index.html").bufferedReader(Charsets.UTF_8).use { it.readText() }
+        assertTrue("Login form must include المتابعة باستخدام Google button", html.contains("""id="btnGoogleSignIn"""") && html.contains("المتابعة باستخدام Google"))
+        assertTrue("Register form must include إنشاء حساب باستخدام Google button", html.contains("""id="btnGoogleRegister"""") && html.contains("إنشاء حساب باستخدام Google"))
+        assertTrue("Email/Password login & register & reset forms must remain intact",
+            html.contains("""id="formAuthLogin"""") && html.contains("""id="formAuthRegister"""") && html.contains("""id="formAuthReset"""")
+        )
+        assertTrue("Google Sign-In must verify Firebase signInWithCredential before post-auth navigation",
+            html.contains("GoogleAuthProvider.credential(idToken)") && html.contains("await signInWithCredential(auth, credential)")
+        )
+        assertTrue("Cancellation and no-account callbacks must exist",
+            html.contains("window.onNativeGoogleSignInCancelled") && html.contains("window.onNativeGoogleNoAccount")
+        )
+        assertTrue("Logout must also clear native Google session state",
+            html.contains("window.AndroidBridge.signOutGoogle()")
+        )
+
+        controller.pause().stop().destroy()
+    }
 }
 
 
