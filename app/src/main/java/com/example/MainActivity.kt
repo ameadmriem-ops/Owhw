@@ -784,6 +784,12 @@ class MainActivity : ComponentActivity() {
                     super.onPageFinished(view, url)
                     applyImmersiveFullScreen()
                     isWebViewLoaded = true
+                    val sysGranted = isSystemNotificationsAllowed()
+                    val appEnabled = MyFirebaseMessagingService.isAppNotificationsEnabled(this@MainActivity)
+                    view?.evaluateJavascript(
+                        "if(window.onNotificationStatusSync){window.onNotificationStatusSync($appEnabled, $sysGranted);}",
+                        null
+                    )
                     pendingFcmNotification?.let { navData ->
                         dispatchFcmNavigation(navData)
                         pendingFcmNotification = null
@@ -2201,10 +2207,13 @@ class MainActivity : ComponentActivity() {
         super.onPause()
         stopPlaybackTicker()
         exoPlayer?.pause()
-        try {
-            webView.onPause()
-        } catch (e: Exception) {
-            Log.w(TAG, "Error pausing webView: ${e.message}")
+        // Keep WebView JS engine awake while translucent CredentialManager Google account picker sheet is active
+        if (!isGoogleSignInInProgress) {
+            try {
+                webView.onPause()
+            } catch (e: Exception) {
+                Log.w(TAG, "Error pausing webView: ${e.message}")
+            }
         }
     }
 
@@ -3948,8 +3957,9 @@ class MainActivity : ComponentActivity() {
         requestId: String
     ) {
         val idToken = googleCred.idToken.trim()
-        if (idToken.isBlank()) {
-            dispatchGoogleSignInFailureToWebView("تعذر استخراج رمز التحقق الرسمي (ID Token) من حساب Google المختار.")
+        val tokenParts = idToken.split('.')
+        if (idToken.isBlank() || tokenParts.size != 3 || tokenParts.any { it.isBlank() }) {
+            dispatchGoogleSignInFailureToWebView("تعذر استخراج رمز التحقق الرسمي الصالح (ID Token) من حساب Google المختار.")
             return
         }
 
@@ -3963,6 +3973,9 @@ class MainActivity : ComponentActivity() {
         }
 
         runOnUiThread {
+            try {
+                webView.onResume()
+            } catch (_: Exception) {}
             val jsCode = """
                 (function() {
                     try {
@@ -3972,7 +3985,7 @@ class MainActivity : ComponentActivity() {
                         }
                         return 'not_found';
                     } catch (err) {
-                        console.error('Error invoking onNativeGoogleSignInSuccess:', err);
+                        console.error('Error invoking onNativeGoogleSignInSuccess:', err && err.message ? err.message : 'invoke_error');
                         return 'error';
                     }
                 })();
@@ -4033,6 +4046,9 @@ class MainActivity : ComponentActivity() {
                 if (isTrueUserCancellation(e)) {
                     Log.i(AUTH_TAG, "User cancelled Google account picker without selecting an account")
                     runOnUiThread {
+                        try {
+                            webView.onResume()
+                        } catch (_: Exception) {}
                         val jsCancel = """
                             (function() {
                                 if (typeof window.onNativeGoogleSignInCancelled === 'function') {
@@ -4061,6 +4077,9 @@ class MainActivity : ComponentActivity() {
                     val noAccountMsg =
                         "لم يتم العثور على حساب Google جاهز على هذا الجهاز (أو لم تُسجَّل شهادة توقيع التطبيق بعد في Firebase Console). يمكنك إضافة حساب Google إلى الهاتف ثم المحاولة مجدداً."
                     runOnUiThread {
+                        try {
+                            webView.onResume()
+                        } catch (_: Exception) {}
                         val jsNoAccount = """
                             (function() {
                                 if (typeof window.onNativeGoogleNoAccount === 'function') {
@@ -4089,6 +4108,9 @@ class MainActivity : ComponentActivity() {
 
     private fun dispatchGoogleSignInFailureToWebView(message: String, showToast: Boolean = false) {
         runOnUiThread {
+            try {
+                webView.onResume()
+            } catch (_: Exception) {}
             if (showToast) {
                 Toast.makeText(this@MainActivity, message, Toast.LENGTH_LONG).show()
             }
@@ -4099,7 +4121,7 @@ class MainActivity : ComponentActivity() {
                             window.onNativeGoogleSignInFailure(${JSONObject.quote(message)});
                         }
                     } catch (err) {
-                        console.error('Error invoking onNativeGoogleSignInFailure:', err);
+                        console.error('Error invoking onNativeGoogleSignInFailure:', err && err.message ? err.message : 'failure_cb_error');
                     }
                 })();
             """.trimIndent()

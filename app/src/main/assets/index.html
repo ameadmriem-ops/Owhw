@@ -5368,46 +5368,149 @@ window.applyLanguage = function(lang, rerender = true) {
 };
 
 // Notification status helpers
-window.getNotificationsState = function() {
-  let appPref = localStorage.getItem("app_notifications_enabled");
-  let appEnabled = (appPref === null) ? true : (appPref === "true");
-  let sysGranted = true;
-  if (window.AndroidBridge) {
+window._notificationDefaultConfig = null;
+window._notificationConfigLoaded = false;
+
+window.loadNotificationDefaultConfig = async function() {
+  if (window._notificationConfigLoaded) {
+    return window._notificationDefaultConfig;
+  }
+  window._notificationConfigLoaded = true;
+  if (typeof fetch !== "function") {
+    return null;
+  }
+  const candidateUrls = ["./notification_config.json", "https://hamza-4b70c.firebaseapp.com/assets/notification_config.json"];
+  for (const url of candidateUrls) {
     try {
-      if (typeof window.AndroidBridge.isAppNotificationsPrefEnabled === "function") {
+      const resp = await fetch(url, { cache: "no-store" });
+      if (resp && resp.ok) {
+        const parsed = await resp.json();
+        if (parsed && typeof parsed === "object") {
+          window._notificationDefaultConfig = parsed;
+          if (typeof window.updateNotificationBellUI === "function") {
+            window.updateNotificationBellUI();
+          }
+          return parsed;
+        }
+      }
+    } catch (_) {
+      // Safe fallback when notification_config.json is unavailable in current runtime context
+    }
+  }
+  return null;
+};
+
+function getEffectiveNotificationState() {
+  const cfg = (window._notificationDefaultConfig && typeof window._notificationDefaultConfig === "object")
+    ? window._notificationDefaultConfig
+    : null;
+  const defaultAppEnabled = (cfg && typeof cfg.enabled === "boolean") ? cfg.enabled : true;
+
+  let appEnabled = defaultAppEnabled;
+  let sysGranted = true;
+
+  try {
+    const appPref = (typeof localStorage !== "undefined" && localStorage)
+      ? localStorage.getItem("app_notifications_enabled")
+      : null;
+    if (appPref === "true" || appPref === "false") {
+      appEnabled = (appPref === "true");
+    }
+    const sysPref = (typeof localStorage !== "undefined" && localStorage)
+      ? localStorage.getItem("sys_notifications_granted")
+      : null;
+    if (sysPref === "true" || sysPref === "false") {
+      sysGranted = (sysPref === "true");
+    } else if (typeof Notification !== "undefined" && typeof Notification.permission === "string") {
+      sysGranted = (Notification.permission !== "denied");
+    }
+  } catch (_) {
+    // Ignore storage read restrictions and continue with safe runtime checks
+  }
+
+  if (window.AndroidBridge && typeof window.AndroidBridge === "object") {
+    try {
+      const hasAppPrefFn = typeof window.AndroidBridge.isAppNotificationsPrefEnabled === "function";
+      const hasSysPermFn = typeof window.AndroidBridge.isSystemNotificationsGranted === "function";
+      if (hasAppPrefFn) {
         appEnabled = Boolean(window.AndroidBridge.isAppNotificationsPrefEnabled());
       }
-      if (typeof window.AndroidBridge.isSystemNotificationsGranted === "function") {
+      if (hasSysPermFn) {
         sysGranted = Boolean(window.AndroidBridge.isSystemNotificationsGranted());
+      } else if (!hasAppPrefFn && typeof window.AndroidBridge.isNotificationsEnabled === "function") {
+        const bridgeCombined = Boolean(window.AndroidBridge.isNotificationsEnabled());
+        appEnabled = bridgeCombined;
+        sysGranted = bridgeCombined;
       }
-    } catch (e) {}
+    } catch (_) {
+      // Safe fallback to persisted preference if bridge call throws
+    }
   }
-  return { appEnabled, sysGranted, effective: appEnabled && sysGranted };
+
+  const effective = Boolean(appEnabled && sysGranted);
+  return {
+    appEnabled: Boolean(appEnabled),
+    sysGranted: Boolean(sysGranted),
+    effective: effective,
+    topic: (cfg && typeof cfg.topic === "string" && cfg.topic.trim()) ? cfg.topic.trim() : "all_users",
+    configAvailable: Boolean(cfg)
+  };
+}
+
+window.getEffectiveNotificationState = getEffectiveNotificationState;
+window.getNotificationsState = getEffectiveNotificationState;
+
+window.updateNotificationBellUI = function() {
+  const notifIconEl = document.getElementById("drawerNotifIcon");
+  if (!notifIconEl) return;
+  try {
+    const notifState = getEffectiveNotificationState();
+    notifIconEl.textContent = (notifState && notifState.effective) ? "🔔" : "🔕";
+  } catch (_) {
+    notifIconEl.textContent = "🔕";
+  }
 };
 
 window.toggleAppNotifications = function() {
-  const state = window.getNotificationsState();
+  const state = getEffectiveNotificationState();
   const nextState = !state.appEnabled;
-  localStorage.setItem("app_notifications_enabled", nextState ? "true" : "false");
+  try {
+    localStorage.setItem("app_notifications_enabled", nextState ? "true" : "false");
+  } catch (_) {}
   if (window.AndroidBridge && typeof window.AndroidBridge.setNotificationsEnabled === "function") {
     try {
       window.AndroidBridge.setNotificationsEnabled(nextState);
     } catch (e) {}
   }
+  window.updateNotificationBellUI();
   if (currentPage === "settings") {
     renderSettingsPage();
   }
 };
 
 window.onNotificationPermissionResult = function(granted, appEnabled, sysGranted) {
-  localStorage.setItem("app_notifications_enabled", appEnabled ? "true" : "false");
+  try {
+    localStorage.setItem("app_notifications_enabled", appEnabled ? "true" : "false");
+    if (typeof sysGranted === "boolean") {
+      localStorage.setItem("sys_notifications_granted", sysGranted ? "true" : "false");
+    } else if (typeof granted === "boolean") {
+      localStorage.setItem("sys_notifications_granted", granted ? "true" : "false");
+    }
+  } catch (_) {}
+  window.updateNotificationBellUI();
   if (currentPage === "settings") {
     renderSettingsPage();
   }
 };
 
 window.onNotificationStatusSync = function(appEnabled, sysGranted) {
-  localStorage.setItem("app_notifications_enabled", appEnabled ? "true" : "false");
+  try {
+    localStorage.setItem("app_notifications_enabled", appEnabled ? "true" : "false");
+    if (typeof sysGranted === "boolean") {
+      localStorage.setItem("sys_notifications_granted", sysGranted ? "true" : "false");
+    }
+  } catch (_) {}
+  window.updateNotificationBellUI();
   if (currentPage === "settings") {
     renderSettingsPage();
   }
@@ -6282,8 +6385,8 @@ onAuthStateChanged(auth, async (user) => {
   window.currentAuthUser = user;
   if (user) {
     window._justLoggedOutManually = false;
-    updateDrawerUserState();
-    updateTopBarAvatar();
+    try { if (typeof window.updateDrawerUserState === "function") window.updateDrawerUserState(); } catch (uiErr) { console.warn("Drawer state update warning:", uiErr); }
+    try { if (typeof window.updateTopBarAvatar === "function") window.updateTopBarAvatar(); } catch (avErr) { console.warn("Top avatar update warning:", avErr); }
     if (currentPage === "account") {
       renderAccountPage();
     }
@@ -6342,9 +6445,17 @@ onAuthStateChanged(auth, async (user) => {
 
     // Sync user profile to Firestore users/{uid} safely in full compliance with security rules
     try {
-      const fallbackName = (user.displayName || "").trim() || (user.email ? user.email.split("@")[0] : "") || "مستخدم";
+      const pendingGoogle = (window._pendingNativeGoogleProfile && typeof window._pendingNativeGoogleProfile === "object")
+        ? window._pendingNativeGoogleProfile
+        : null;
+      const fallbackName = (user.displayName || "").trim() ||
+                           (pendingGoogle && pendingGoogle.displayName ? String(pendingGoogle.displayName).trim() : "") ||
+                           (user.email ? user.email.split("@")[0] : "") ||
+                           "مستخدم";
       const resolvedDisplayName = (existingUserData.displayName || "").trim() || fallbackName;
-      const resolvedPhotoURL = (existingUserData.photoURL || "").trim() || (user.photoURL || "").trim();
+      const resolvedPhotoURL = (existingUserData.photoURL || "").trim() ||
+                               (user.photoURL || "").trim() ||
+                               (pendingGoogle && pendingGoogle.photoURL ? String(pendingGoogle.photoURL).trim() : "");
 
       if (!existingUserDocExists) {
         const createData = {
@@ -6400,8 +6511,8 @@ onAuthStateChanged(auth, async (user) => {
     window.applyUserRole("USER");
   }
 
-  updateDrawerUserState();
-  updateTopBarAvatar();
+  try { if (typeof window.updateDrawerUserState === "function") window.updateDrawerUserState(); } catch (uiErr) { console.warn("Drawer state update warning:", uiErr); }
+  try { if (typeof window.updateTopBarAvatar === "function") window.updateTopBarAvatar(); } catch (avErr) { console.warn("Top avatar update warning:", avErr); }
   if (currentPage === "account") {
     renderAccountPage();
   }
@@ -6510,7 +6621,7 @@ window.updateDrawerUserState = function() {
     }
     if (badgeEl) {
       badgeEl.textContent = "مشاهد (غير مسجل)";
-      badgeEl.classList.remove("admin");
+      badgeEl.classList.remove("admin", "assistant");
     }
     if (avatarEl) avatarEl.textContent = "👤";
     if (accountLabelEl) accountLabelEl.textContent = "تسجيل الدخول";
@@ -6518,9 +6629,13 @@ window.updateDrawerUserState = function() {
 
   if (notifIconEl) {
     const notifState = getEffectiveNotificationState();
-    notifIconEl.textContent = notifState.effective ? "🔔" : "🔕";
+    notifIconEl.textContent = (notifState && notifState.effective) ? "🔔" : "🔕";
   }
 };
+
+// Initialize notification config & bell state immediately (works before/without login)
+window.updateNotificationBellUI();
+window.loadNotificationDefaultConfig();
 
 window.updateTopBarAvatar = function() {
   const circle = document.getElementById("topAvatarCircle");
@@ -6684,6 +6799,11 @@ window.continueToAuthFromGate = function(tab) {
 };
 
 window.handlePostAuthSuccess = function() {
+  const verifiedUser = window.currentAuthUser || (auth && auth.currentUser) || null;
+  if (!verifiedUser || !verifiedUser.uid) {
+    console.warn("handlePostAuthSuccess blocked: Firebase user session is not yet verified.");
+    return;
+  }
   window.closeWatchAuthPrompt();
   window.closeAuthModal();
 
@@ -6943,12 +7063,13 @@ window.handleAuthLoginSubmit = async function(e) {
 
   try {
     const cred = await signInWithEmailAndPassword(auth, email, password);
-    if (cred && cred.user) {
-      window.currentAuthUser = cred.user;
-      window._justLoggedOutManually = false;
-      updateDrawerUserState();
-      updateTopBarAvatar();
+    if (!cred || !cred.user || !cred.user.uid) {
+      throw new Error("لم يتم تأكيد هوية المستخدم من Firebase Authentication.");
     }
+    window.currentAuthUser = cred.user;
+    window._justLoggedOutManually = false;
+    try { updateDrawerUserState(); } catch (_) {}
+    try { updateTopBarAvatar(); } catch (_) {}
     window.handlePostAuthSuccess();
   } catch (err) {
     console.error("Login error:", err);
@@ -6987,13 +7108,14 @@ window.handleAuthRegisterSubmit = async function(e) {
 
   try {
     const cred = await createUserWithEmailAndPassword(auth, email, password);
-    if (cred.user) {
-      await updateProfile(cred.user, { displayName: name });
-      window.currentAuthUser = cred.user;
-      window._justLoggedOutManually = false;
-      updateDrawerUserState();
-      updateTopBarAvatar();
+    if (!cred || !cred.user || !cred.user.uid) {
+      throw new Error("لم يتم تأكيد إنشاء الحساب من Firebase Authentication.");
     }
+    await updateProfile(cred.user, { displayName: name });
+    window.currentAuthUser = cred.user;
+    window._justLoggedOutManually = false;
+    try { updateDrawerUserState(); } catch (_) {}
+    try { updateTopBarAvatar(); } catch (_) {}
     window.handlePostAuthSuccess();
   } catch (err) {
     console.error("Register error:", err);
@@ -7133,13 +7255,13 @@ window.handleGoogleSignInClick = async function(mode = "login") {
     provider.setCustomParameters({ prompt: "select_account" });
     try {
       const userCredential = await signInWithPopup(auth, provider);
-      if (!userCredential || !userCredential.user) {
+      if (!userCredential || !userCredential.user || !userCredential.user.uid) {
         throw new Error("لم تكتمل مصادقة Firebase بعد اختيار الحساب.");
       }
       window.currentAuthUser = userCredential.user;
       window._justLoggedOutManually = false;
-      updateDrawerUserState();
-      updateTopBarAvatar();
+      try { updateDrawerUserState(); } catch (_) {}
+      try { updateTopBarAvatar(); } catch (_) {}
       window.setGoogleButtonsLoading(false, normalizedMode);
       clearAuthAlert();
       window.handlePostAuthSuccess();
@@ -7149,7 +7271,7 @@ window.handleGoogleSignInClick = async function(mode = "login") {
         clearAuthAlert();
         return;
       }
-      console.error("Google sign in error:", err);
+      console.error("Google sign in error:", err && err.code ? err.code : "popup_auth_error");
       showAuthAlert(mapAuthErrorCodeToArabic(err));
     }
   }
@@ -7192,10 +7314,12 @@ window.onNativeGoogleSignInSuccess = async function(payloadOrToken) {
     return;
   }
 
-  if (!idToken) {
+  // Validate non-empty 3-segment JWT Google ID token without logging token contents
+  const jwtParts = idToken ? idToken.split(".") : [];
+  if (!idToken || jwtParts.length !== 3 || !jwtParts[0] || !jwtParts[1] || !jwtParts[2]) {
     window.setGoogleButtonsLoading(false, activeMode);
-    console.error("onNativeGoogleSignInSuccess: missing Google ID token");
-    showAuthAlert("تعذر استلام رمز المصادقة الرسمي من حساب Google المختار.");
+    console.error("onNativeGoogleSignInSuccess: invalid or missing Google ID token format");
+    showAuthAlert("تعذر استلام رمز المصادقة الرسمي الصالح من حساب Google المختار.");
     return;
   }
 
@@ -7205,20 +7329,38 @@ window.onNativeGoogleSignInSuccess = async function(payloadOrToken) {
   window._isCompletingFirebaseGoogleAuth = true;
   showAuthAlert("جاري تأكيد جلسة المصادقة مع Firebase...", "info");
 
+  const googleName = String(nativeMeta.displayName || "").trim();
+  const googlePhoto = String(nativeMeta.photoUrl || "").trim();
+  window._pendingNativeGoogleProfile = {
+    displayName: googleName,
+    photoURL: googlePhoto
+  };
+
+  let signedInUser = null;
   try {
     if (!auth || typeof signInWithCredential !== "function" || !GoogleAuthProvider) {
       throw new Error("نظام مصادقة Firebase غير مهيأ حالياً.");
     }
     const credential = GoogleAuthProvider.credential(idToken);
     const userCredential = await signInWithCredential(auth, credential);
-    const signedInUser = userCredential && userCredential.user ? userCredential.user : null;
+    signedInUser = userCredential && userCredential.user ? userCredential.user : null;
     if (!signedInUser || !signedInUser.uid) {
       throw new Error("لم يتم تأكيد هوية المستخدم من Firebase Authentication.");
     }
+  } catch (err) {
+    window._pendingNativeGoogleProfile = null;
+    if (requestId && window._lastProcessedGoogleRequestId === requestId) {
+      window._lastProcessedGoogleRequestId = "";
+    }
+    console.error("Firebase signInWithCredential error:", err && err.code ? err.code : "firebase_credential_error");
+    window._isCompletingFirebaseGoogleAuth = false;
+    window.setGoogleButtonsLoading(false, activeMode);
+    showAuthAlert(mapAuthErrorCodeToArabic(err));
+    return;
+  }
 
-    // Ensure Firebase user profile carries Google displayName & photoURL if missing
-    const googleName = String(nativeMeta.displayName || "").trim();
-    const googlePhoto = String(nativeMeta.photoUrl || "").trim();
+  // Firebase Authentication is now 100% verified; complete profile & UI sync safely without falsely failing auth
+  try {
     if ((!signedInUser.displayName && googleName) || (!signedInUser.photoURL && googlePhoto)) {
       try {
         await updateProfile(signedInUser, {
@@ -7226,27 +7368,19 @@ window.onNativeGoogleSignInSuccess = async function(payloadOrToken) {
           photoURL: signedInUser.photoURL || googlePhoto
         });
       } catch (profErr) {
-        console.warn("WebView updateProfile sync warning:", profErr);
+        console.warn("WebView updateProfile sync warning:", profErr && profErr.code ? profErr.code : "profile_update_warning");
       }
     }
 
-    // Immediately populate currentAuthUser before closing modal & rendering destination
-    // so Account/Drawer/Watch Gate never see a stale null user while async Firestore sync completes
     window.currentAuthUser = signedInUser;
     window._justLoggedOutManually = false;
-    updateDrawerUserState();
-    updateTopBarAvatar();
+    try { updateDrawerUserState(); } catch (uiErr) { console.warn("updateDrawerUserState post-auth warning:", uiErr); }
+    try { updateTopBarAvatar(); } catch (avErr) { console.warn("updateTopBarAvatar post-auth warning:", avErr); }
     window.setGoogleButtonsLoading(false, activeMode);
     clearAuthAlert();
     window.handlePostAuthSuccess();
-  } catch (err) {
-    if (requestId && window._lastProcessedGoogleRequestId === requestId) {
-      window._lastProcessedGoogleRequestId = "";
-    }
-    console.error("Firebase signInWithCredential error:", err && err.code ? err.code : err);
-    window.setGoogleButtonsLoading(false, activeMode);
-    showAuthAlert(mapAuthErrorCodeToArabic(err));
   } finally {
+    window._pendingNativeGoogleProfile = null;
     window._isCompletingFirebaseGoogleAuth = false;
   }
 };
@@ -7373,24 +7507,35 @@ window.handleAuthResetSubmit = async function(e) {
 window.logoutApp = async function() {
   if (confirm("هل أنت متأكد من رغبتك في تسجيل الخروج؟")) {
     window._justLoggedOutManually = true;
+    window._isCompletingFirebaseGoogleAuth = false;
+    window._lastProcessedGoogleRequestId = "";
+    window.setGoogleButtonsLoading(false);
     try {
       await signOut(auth);
     } catch (e) {
-      console.warn("Sign out error:", e);
+      console.warn("Sign out error:", e && e.code ? e.code : "signout_warning");
     }
     if (window.AndroidBridge && typeof window.AndroidBridge.signOutGoogle === "function") {
       try {
         window.AndroidBridge.signOutGoogle();
       } catch (nativeSignOutErr) {
-        console.warn("Native Google signOut error:", nativeSignOutErr);
+        console.warn("Native Google signOut warning");
       }
     }
+    window.currentAuthUser = null;
+    window.currentAdminClaim = false;
+    window.currentAssistantClaim = false;
+    window.currentFirestoreRole = "";
     window._pendingWatchAction = null;
+    window._pendingRatingFid = null;
     clearUserRole();
+    try { updateDrawerUserState(); } catch (_) {}
+    try { updateTopBarAvatar(); } catch (_) {}
     historyStack = [];
     showPage("home");
   }
 };
+window.confirmLogout = window.logoutApp;
 
 // ================= Android Native Back Interceptor =================
 window.handleAppBack = function() {

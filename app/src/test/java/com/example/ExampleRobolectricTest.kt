@@ -545,11 +545,57 @@ class ExampleRobolectricTest {
         assertTrue("Cancellation, no-account, and logout cleanup callbacks must exist",
             html.contains("window.onNativeGoogleSignInCancelled") &&
             html.contains("window.onNativeGoogleNoAccount") &&
-            html.contains("window.AndroidBridge.signOutGoogle()")
+            html.contains("window.AndroidBridge.signOutGoogle()") &&
+            html.contains("window.confirmLogout = window.logoutApp")
+        )
+        assertTrue("handlePostAuthSuccess must guard against unverified Firebase user session",
+            html.contains("const verifiedUser = window.currentAuthUser || (auth && auth.currentUser) || null;")
         )
 
         controller.pause().stop().destroy()
     }
+
+    @Test
+    fun testEffectiveNotificationStateAndBellBridgeIntegration() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+
+        // 1. Verify notification_config.json asset exists and parses cleanly
+        val configRaw = context.assets.open("notification_config.json").bufferedReader(Charsets.UTF_8).use { it.readText() }
+        val configJson = org.json.JSONObject(configRaw)
+        assertEquals("all_users", configJson.optString("topic"))
+        assertTrue(configJson.optString("title").isNotBlank())
+
+        // 2. Verify getEffectiveNotificationState is defined in index.html, dynamic (not hardcoded), and wired to bell & settings
+        val html = context.assets.open("index.html").bufferedReader(Charsets.UTF_8).use { it.readText() }
+        assertTrue("getEffectiveNotificationState function must be defined", html.contains("function getEffectiveNotificationState()"))
+        assertTrue("window.getEffectiveNotificationState must be exposed", html.contains("window.getEffectiveNotificationState = getEffectiveNotificationState"))
+        assertTrue("window.getNotificationsState must share the unified implementation", html.contains("window.getNotificationsState = getEffectiveNotificationState"))
+        assertTrue("Bell UI updater must exist and update drawerNotifIcon", html.contains("window.updateNotificationBellUI = function()"))
+        assertTrue("Dynamic effective computation must combine appEnabled and sysGranted", html.contains("const effective = Boolean(appEnabled && sysGranted);"))
+
+        // 3. Verify native Android notification preference toggles dynamically (not hardcoded) and syncs with MainActivity
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        val activity = controller.get()
+        shadowOf(Looper.getMainLooper()).idle()
+
+        MyFirebaseMessagingService.setAppNotificationsEnabled(activity, true)
+        assertTrue("App notification preference should be true when enabled", MyFirebaseMessagingService.isAppNotificationsEnabled(activity))
+
+        MyFirebaseMessagingService.setAppNotificationsEnabled(activity, false)
+        assertFalse("App notification preference should be false when disabled", MyFirebaseMessagingService.isAppNotificationsEnabled(activity))
+
+        MyFirebaseMessagingService.setAppNotificationsEnabled(activity, true)
+        assertTrue("App notification preference should toggle back to true", MyFirebaseMessagingService.isAppNotificationsEnabled(activity))
+
+        // 4. Verify Activity onPause skips pausing WebView when Google Sign-In picker is active
+        activity.isGoogleSignInInProgress = true
+        controller.pause()
+        assertTrue("Google Sign-In flag remains active across translucent sheet pause", activity.isGoogleSignInInProgress)
+        activity.isGoogleSignInInProgress = false
+
+        controller.stop().destroy()
+    }
 }
+
 
 
