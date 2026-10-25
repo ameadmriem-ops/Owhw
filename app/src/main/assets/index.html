@@ -6276,9 +6276,17 @@ window.applyUserRole = function(role) {
 };
 
 // ================= Firebase Authentication & User State System =================
+window._authSyncSeq = 0;
 onAuthStateChanged(auth, async (user) => {
+  const syncSeq = ++window._authSyncSeq;
   window.currentAuthUser = user;
   if (user) {
+    window._justLoggedOutManually = false;
+    updateDrawerUserState();
+    updateTopBarAvatar();
+    if (currentPage === "account") {
+      renderAccountPage();
+    }
     if (typeof window.syncUserAdExemption === "function") {
       window.syncUserAdExemption(user.uid);
     }
@@ -6295,6 +6303,8 @@ onAuthStateChanged(auth, async (user) => {
         claims = tokenResult && tokenResult.claims ? tokenResult.claims : {};
       } catch (_) {}
     }
+
+    if (syncSeq !== window._authSyncSeq) return;
 
     const isAdminClaimOrOwner = (claims.admin === true || claims.role === "ADMIN" || user.uid === "RDp9BU99UJcG60hcBfMFNrxaUwt2") &&
                                  emailLower === "ameadmriem@gmail.com";
@@ -6317,6 +6327,7 @@ onAuthStateChanged(auth, async (user) => {
     } catch (err) {
       console.warn("Firestore user role check error:", err);
     }
+    if (syncSeq !== window._authSyncSeq) return;
     window.currentFirestoreRole = firestoreRole;
 
     let targetRole = "USER";
@@ -6379,6 +6390,7 @@ onAuthStateChanged(auth, async (user) => {
     } catch (err) {
       console.warn("Cloud data sync error:", err);
     }
+    if (syncSeq !== window._authSyncSeq) return;
   } else {
     window.currentAuthUser = null;
     window.currentAdminClaim = false;
@@ -6386,15 +6398,6 @@ onAuthStateChanged(auth, async (user) => {
     window.currentFirestoreRole = "";
     window.saveUserRole("USER");
     window.applyUserRole("USER");
-    if (!window._silentGoogleRestoreChecked && !window._justLoggedOutManually &&
-        window.AndroidBridge && typeof window.AndroidBridge.requestSilentGoogleRestoreIfSignedIn === "function") {
-      window._silentGoogleRestoreChecked = true;
-      try {
-        window.AndroidBridge.requestSilentGoogleRestoreIfSignedIn();
-      } catch (restoreErr) {
-        console.warn("Silent Google session restore bridge warning:", restoreErr);
-      }
-    }
   }
 
   updateDrawerUserState();
@@ -6539,6 +6542,18 @@ window.updateTopBarAvatar = function() {
   }
 };
 
+window.isNativeGooglePickerActive = function() {
+  try {
+    return Boolean(
+      window.AndroidBridge &&
+      typeof window.AndroidBridge.isGoogleSignInActive === "function" &&
+      window.AndroidBridge.isGoogleSignInActive()
+    );
+  } catch (_) {
+    return false;
+  }
+};
+
 // ================= Auth Modal Controllers =================
 window.openAuthModal = function(defaultTab = "login") {
   const overlay = document.getElementById("authModalOverlay");
@@ -6547,6 +6562,12 @@ window.openAuthModal = function(defaultTab = "login") {
     window.isAuthModalOpen = true;
     window._isAnyInputActiveFlag = true;
     notifyNativeInputFocusState(true);
+    if (typeof window.setGoogleButtonsLoading === "function" &&
+        window._isGoogleAuthBusy &&
+        !window._isCompletingFirebaseGoogleAuth &&
+        !window.isNativeGooglePickerActive()) {
+      window.setGoogleButtonsLoading(false);
+    }
     switchAuthTab(defaultTab);
     clearAuthAlert();
   }
@@ -6559,7 +6580,9 @@ window.closeAuthModal = function() {
     window.isAuthModalOpen = false;
     window._isAnyInputActiveFlag = false;
     notifyNativeInputFocusState(false);
-    if (typeof window.setGoogleButtonsLoading === "function" && !window._isGoogleAuthBusy) {
+    if (typeof window.setGoogleButtonsLoading === "function" &&
+        !window._isCompletingFirebaseGoogleAuth &&
+        !window.isNativeGooglePickerActive()) {
       window.setGoogleButtonsLoading(false);
     }
     clearAuthAlert();
@@ -6920,6 +6943,12 @@ window.handleAuthLoginSubmit = async function(e) {
 
   try {
     const cred = await signInWithEmailAndPassword(auth, email, password);
+    if (cred && cred.user) {
+      window.currentAuthUser = cred.user;
+      window._justLoggedOutManually = false;
+      updateDrawerUserState();
+      updateTopBarAvatar();
+    }
     window.handlePostAuthSuccess();
   } catch (err) {
     console.error("Login error:", err);
@@ -6960,6 +6989,10 @@ window.handleAuthRegisterSubmit = async function(e) {
     const cred = await createUserWithEmailAndPassword(auth, email, password);
     if (cred.user) {
       await updateProfile(cred.user, { displayName: name });
+      window.currentAuthUser = cred.user;
+      window._justLoggedOutManually = false;
+      updateDrawerUserState();
+      updateTopBarAvatar();
     }
     window.handlePostAuthSuccess();
   } catch (err) {
@@ -6972,9 +7005,26 @@ window.handleAuthRegisterSubmit = async function(e) {
 };
 
 window._isGoogleAuthBusy = false;
+window._isCompletingFirebaseGoogleAuth = false;
+window._lastProcessedGoogleRequestId = "";
+window._googleAuthWatchdogTimer = null;
 
 window.setGoogleButtonsLoading = function(isLoading, activeMode = "login") {
   window._isGoogleAuthBusy = !!isLoading;
+  if (window._googleAuthWatchdogTimer) {
+    clearTimeout(window._googleAuthWatchdogTimer);
+    window._googleAuthWatchdogTimer = null;
+  }
+  if (isLoading) {
+    window._googleAuthWatchdogTimer = setTimeout(() => {
+      if (window._isGoogleAuthBusy &&
+          !window._isCompletingFirebaseGoogleAuth &&
+          !window.isNativeGooglePickerActive()) {
+        window.setGoogleButtonsLoading(false, activeMode);
+      }
+    }, 45000);
+  }
+
   const loginGoogleBtn = document.getElementById("btnGoogleSignIn");
   const regGoogleBtn = document.getElementById("btnGoogleRegister");
   const loginGoogleText = document.getElementById("btnGoogleSignInText");
@@ -7007,6 +7057,26 @@ window.setGoogleButtonsLoading = function(isLoading, activeMode = "login") {
   }
 };
 
+window.recoverStaleGoogleLoadingIfIdle = function() {
+  if (!window._isGoogleAuthBusy || window._isCompletingFirebaseGoogleAuth) return;
+  if (window.AndroidBridge && typeof window.AndroidBridge.isGoogleSignInActive === "function") {
+    setTimeout(() => {
+      if (window._isGoogleAuthBusy &&
+          !window._isCompletingFirebaseGoogleAuth &&
+          !window.isNativeGooglePickerActive()) {
+        window.setGoogleButtonsLoading(false);
+      }
+    }, 1200);
+  }
+};
+
+window.addEventListener("focus", window.recoverStaleGoogleLoadingIfIdle);
+document.addEventListener("visibilitychange", function() {
+  if (document.visibilityState === "visible") {
+    window.recoverStaleGoogleLoadingIfIdle();
+  }
+});
+
 window.openDeviceAddGoogleAccount = function() {
   if (window.AndroidBridge && typeof window.AndroidBridge.openAddGoogleAccountSettings === "function") {
     try {
@@ -7018,8 +7088,15 @@ window.openDeviceAddGoogleAccount = function() {
 };
 
 window.handleGoogleSignInClick = async function(mode = "login") {
-  if (window._isGoogleAuthBusy) {
-    return;
+  if (window._isGoogleAuthBusy || window._isCompletingFirebaseGoogleAuth) {
+    if (!window._isCompletingFirebaseGoogleAuth &&
+        window.AndroidBridge &&
+        typeof window.AndroidBridge.isGoogleSignInActive === "function" &&
+        !window.isNativeGooglePickerActive()) {
+      window.setGoogleButtonsLoading(false);
+    } else {
+      return;
+    }
   }
   const normalizedMode = mode === "register" ? "register" : "login";
   clearAuthAlert();
@@ -7059,7 +7136,10 @@ window.handleGoogleSignInClick = async function(mode = "login") {
       if (!userCredential || !userCredential.user) {
         throw new Error("لم تكتمل مصادقة Firebase بعد اختيار الحساب.");
       }
+      window.currentAuthUser = userCredential.user;
       window._justLoggedOutManually = false;
+      updateDrawerUserState();
+      updateTopBarAvatar();
       window.setGoogleButtonsLoading(false, normalizedMode);
       clearAuthAlert();
       window.handlePostAuthSuccess();
@@ -7103,6 +7183,14 @@ window.onNativeGoogleSignInSuccess = async function(payloadOrToken) {
   }
 
   const activeMode = nativeMeta.mode === "register" ? "register" : "login";
+  const requestId = String(nativeMeta.requestId || "").trim();
+
+  if (requestId && window._lastProcessedGoogleRequestId === requestId) {
+    return;
+  }
+  if (window._isCompletingFirebaseGoogleAuth) {
+    return;
+  }
 
   if (!idToken) {
     window.setGoogleButtonsLoading(false, activeMode);
@@ -7111,9 +7199,11 @@ window.onNativeGoogleSignInSuccess = async function(payloadOrToken) {
     return;
   }
 
-  if (nativeMeta.mode !== "restore") {
-    showAuthAlert("جاري تأكيد جلسة المصادقة مع Firebase...", "info");
+  if (requestId) {
+    window._lastProcessedGoogleRequestId = requestId;
   }
+  window._isCompletingFirebaseGoogleAuth = true;
+  showAuthAlert("جاري تأكيد جلسة المصادقة مع Firebase...", "info");
 
   try {
     if (!auth || typeof signInWithCredential !== "function" || !GoogleAuthProvider) {
@@ -7140,28 +7230,35 @@ window.onNativeGoogleSignInSuccess = async function(payloadOrToken) {
       }
     }
 
+    // Immediately populate currentAuthUser before closing modal & rendering destination
+    // so Account/Drawer/Watch Gate never see a stale null user while async Firestore sync completes
+    window.currentAuthUser = signedInUser;
     window._justLoggedOutManually = false;
+    updateDrawerUserState();
+    updateTopBarAvatar();
     window.setGoogleButtonsLoading(false, activeMode);
     clearAuthAlert();
-
-    if (nativeMeta.mode !== "restore") {
-      window.handlePostAuthSuccess();
-    }
+    window.handlePostAuthSuccess();
   } catch (err) {
+    if (requestId && window._lastProcessedGoogleRequestId === requestId) {
+      window._lastProcessedGoogleRequestId = "";
+    }
     console.error("Firebase signInWithCredential error:", err && err.code ? err.code : err);
     window.setGoogleButtonsLoading(false, activeMode);
-    if (nativeMeta.mode !== "restore") {
-      showAuthAlert(mapAuthErrorCodeToArabic(err));
-    }
+    showAuthAlert(mapAuthErrorCodeToArabic(err));
+  } finally {
+    window._isCompletingFirebaseGoogleAuth = false;
   }
 };
 
 window.onNativeGoogleSignInCancelled = function() {
+  window._isCompletingFirebaseGoogleAuth = false;
   window.setGoogleButtonsLoading(false);
   clearAuthAlert();
 };
 
 window.onNativeGoogleNoAccount = function(message) {
+  window._isCompletingFirebaseGoogleAuth = false;
   window.setGoogleButtonsLoading(false);
   const box = document.getElementById("authAlertBox");
   if (!box) return;
@@ -7186,6 +7283,7 @@ window.onNativeGoogleNoAccount = function(message) {
 };
 
 window.onNativeGoogleSignInFailure = function(errorMsg) {
+  window._isCompletingFirebaseGoogleAuth = false;
   window.setGoogleButtonsLoading(false);
   if (errorMsg === "CANCELLED" || errorMsg === "تم إلغاء تسجيل الدخول") {
     clearAuthAlert();
@@ -10666,6 +10764,9 @@ window.renderCurrentPage = () => {
     window._pendingPageReRenderOnBlur = true;
     return;
   }
+  if (currentPage === "watch") {
+    return;
+  }
   if (currentPage === "details" && window._lastDetailsFid) openDetailsBack();
   else if (currentPage === "episodes" && window._lastDetailsFid) openEpisodesBack();
   else if (currentPage === "search") openSearchBack();
@@ -10679,11 +10780,11 @@ window.renderCurrentPage = () => {
     else renderAddNewsPage(true);
   }
   else if (currentPage === "reports") {
-    if (window.currentUserRole !== "ADMIN") { historyStack = []; showPage('home'); }
+    if (window.currentUserRole !== "ADMIN" && window.currentUserRole !== "ASSISTANT") { historyStack = []; showPage('home'); }
     else renderAdminReportsPage();
   }
   else if (currentPage === "report_detail") {
-    if (window.currentUserRole !== "ADMIN") { historyStack = []; showPage('home'); }
+    if (window.currentUserRole !== "ADMIN" && window.currentUserRole !== "ASSISTANT") { historyStack = []; showPage('home'); }
     else renderReportDetailPage(window.currentViewingReportId);
   }
   else {

@@ -395,22 +395,81 @@ class ExampleRobolectricTest {
     fun testGoogleSignInFirebaseConfigDiagnosticsAndAssets() {
         val context = ApplicationProvider.getApplicationContext<Context>()
 
-        // 1. Verify Firebase initialization binds to existing hamza-4b70c project
+        // 1. Verify official app/google-services.json generated resources & Firebase initialization for hamza-4b70c
+        assertEquals("google-services.json project_id must be hamza-4b70c", "hamza-4b70c", context.getString(R.string.project_id))
+        assertEquals("google-services.json gcm_defaultSenderId must be 595903053058", "595903053058", context.getString(R.string.gcm_defaultSenderId))
+        assertEquals(
+            "google-services.json google_app_id must match Android mobilesdk_app_id",
+            "1:595903053058:android:b855cb828befb352d4561b",
+            context.getString(R.string.google_app_id)
+        )
+        assertEquals(
+            "google-services.json default_web_client_id must match Web OAuth Client ID",
+            "595903053058-om6vigelenhg8374vr2ou28ksvlaanfi.apps.googleusercontent.com",
+            context.getString(R.string.default_web_client_id)
+        )
+
         MainActivity.ensureFirebaseInitialized(context)
         val firebaseApps = com.google.firebase.FirebaseApp.getApps(context)
         assertTrue("FirebaseApp must be initialized for hamza-4b70c", firebaseApps.isNotEmpty())
         val defaultApp = com.google.firebase.FirebaseApp.getInstance()
         assertEquals("Firebase project ID must remain hamza-4b70c", "hamza-4b70c", defaultApp.options.projectId)
         assertEquals("GCM sender ID must match hamza-4b70c project number", "595903053058", defaultApp.options.gcmSenderId)
+        assertEquals(
+            "FirebaseApp applicationId must use official Android mobilesdk_app_id from google-services.json",
+            "1:595903053058:android:b855cb828befb352d4561b",
+            defaultApp.options.applicationId
+        )
 
-        // 2. Verify Activity configuration, Web Client ID, cancellation vs OAuth error diagnostics, token sanitization, and Add Account intent
+        // Verify google-services.json Android OAuth client matches package_name and debug.keystore SHA-1
+        val gsFile = java.io.File("google-services.json").let { if (it.exists()) it else java.io.File("app/google-services.json") }
+        assertTrue("Official google-services.json file must exist in app module", gsFile.exists())
+        val gsJson = org.json.JSONObject(gsFile.readText(Charsets.UTF_8))
+        assertEquals("hamza-4b70c", gsJson.getJSONObject("project_info").getString("project_id"))
+        val clientObj = gsJson.getJSONArray("client").getJSONObject(0)
+        assertEquals(
+            "com.aistudio.blackanime.qkxmr",
+            clientObj.getJSONObject("client_info").getJSONObject("android_client_info").getString("package_name")
+        )
+        val oauthClients = clientObj.getJSONArray("oauth_client")
+        var foundMatchingAndroidOAuth = false
+        val keystoreFile = java.io.File("../debug.keystore").let { if (it.exists()) it else java.io.File("debug.keystore") }
+        val ks = java.security.KeyStore.getInstance(java.security.KeyStore.getDefaultType())
+        keystoreFile.inputStream().use { ks.load(it, "android".toCharArray()) }
+        val certBytes = ks.getCertificate("androiddebugkey").encoded
+        val actualDebugSha1Hex = MainActivity.computeCertificateDigest(certBytes, "SHA-1").replace(":", "").lowercase()
+        for (i in 0 until oauthClients.length()) {
+            val oc = oauthClients.getJSONObject(i)
+            if (oc.optInt("client_type") == 1) {
+                val androidInfo = oc.optJSONObject("android_info")
+                if (androidInfo != null &&
+                    androidInfo.optString("package_name") == "com.aistudio.blackanime.qkxmr" &&
+                    androidInfo.optString("certificate_hash").lowercase() == actualDebugSha1Hex
+                ) {
+                    foundMatchingAndroidOAuth = true
+                }
+            }
+        }
+        assertTrue(
+            "google-services.json must contain client_type=1 Android OAuth entry matching com.aistudio.blackanime.qkxmr and actual APK signing SHA-1",
+            foundMatchingAndroidOAuth
+        )
+
+        // 2. Verify certificate digest helper computes real SHA-1 / SHA-256 without hardcoded assumptions
+        val sampleCert = "blackanime-cert-sample".toByteArray(Charsets.UTF_8)
+        val sha1 = MainActivity.computeCertificateDigest(sampleCert, "SHA-1")
+        val sha256 = MainActivity.computeCertificateDigest(sampleCert, "SHA-256")
+        assertEquals("SHA-1 digest must have 20 hex octets separated by colons", 59, sha1.length)
+        assertEquals("SHA-256 digest must have 32 hex octets separated by colons", 95, sha256.length)
+
+        // 3. Verify Activity configuration, Web Client ID alignment, cancellation vs OAuth error diagnostics, token sanitization, and Add Account intent
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val activity = controller.get()
         shadowOf(Looper.getMainLooper()).idle()
 
         assertEquals(
-            "Application package name must match expected Android app ID",
-            MainActivity.EXPECTED_PACKAGE_NAME,
+            "Application package name must match com.aistudio.blackanime.qkxmr",
+            "com.aistudio.blackanime.qkxmr",
             activity.packageName
         )
         val webClientId = activity.resolveGoogleServerClientId()
@@ -418,6 +477,14 @@ class ExampleRobolectricTest {
             "Web Client ID must match hamza-4b70c Web OAuth 2.0 Client ID",
             "595903053058-om6vigelenhg8374vr2ou28ksvlaanfi.apps.googleusercontent.com",
             webClientId
+        )
+        assertTrue(
+            "Resolved Web Client ID must align with hamza-4b70c project number 595903053058",
+            activity.isWebClientIdAlignedWithProject(webClientId)
+        )
+        assertFalse(
+            "Web Client ID from a different project must be rejected",
+            activity.isWebClientIdAlignedWithProject("123456789012-wrongproject.apps.googleusercontent.com")
         )
 
         // True user cancellation vs OAuth SHA-1 mismatch disguised as cancellation
@@ -429,7 +496,10 @@ class ExampleRobolectricTest {
         )
         assertFalse("28444 OAuth/SHA-1 error must NOT be treated as user cancellation", activity.isTrueUserCancellation(shaMismatchCancel))
         val formattedShaErr = activity.formatGoogleSignInErrorMessage(shaMismatchCancel)
-        assertTrue("OAuth error message must mention hamza-4b70c and SHA-1", formattedShaErr.contains("hamza-4b70c") && formattedShaErr.contains(MainActivity.DEBUG_SHA1_FINGERPRINT))
+        assertTrue(
+            "OAuth error message must mention hamza-4b70c and actual package name",
+            formattedShaErr.contains("hamza-4b70c") && formattedShaErr.contains("com.aistudio.blackanime.qkxmr")
+        )
 
         // Token redaction in logs
         val fakeJwt = "eyJhbGciOiJSUzI1NiIsImtpZCI6IjEyMyJ9.eyJzdWIiOiJ1c2VyXzEyMyIsImVtYWlsIjoidGVzdEBleGFtcGxlLmNvbSJ9.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
@@ -452,20 +522,29 @@ class ExampleRobolectricTest {
         assertNotNull(accountTypes)
         assertTrue("Intent must target com.google account type", accountTypes!!.contains("com.google"))
 
-        // 3. Verify index.html Google buttons, Firebase signInWithCredential flow, Email/Password preservation, and logout cleanup
+        // 4. Verify index.html single-path Google Sign-In, request deduplication, stuck-loading recovery, and watch protection
         val html = context.assets.open("index.html").bufferedReader(Charsets.UTF_8).use { it.readText() }
         assertTrue("Login form must include المتابعة باستخدام Google button", html.contains("""id="btnGoogleSignIn"""") && html.contains("المتابعة باستخدام Google"))
         assertTrue("Register form must include إنشاء حساب باستخدام Google button", html.contains("""id="btnGoogleRegister"""") && html.contains("إنشاء حساب باستخدام Google"))
         assertTrue("Email/Password login & register & reset forms must remain intact",
             html.contains("""id="formAuthLogin"""") && html.contains("""id="formAuthRegister"""") && html.contains("""id="formAuthReset"""")
         )
-        assertTrue("Google Sign-In must verify Firebase signInWithCredential before post-auth navigation",
-            html.contains("GoogleAuthProvider.credential(idToken)") && html.contains("await signInWithCredential(auth, credential)")
+        assertTrue("Google Sign-In must execute single Firebase signInWithCredential with requestId deduplication",
+            html.contains("GoogleAuthProvider.credential(idToken)") &&
+            html.contains("await signInWithCredential(auth, credential)") &&
+            html.contains("window._lastProcessedGoogleRequestId") &&
+            html.contains("window._isCompletingFirebaseGoogleAuth")
         )
-        assertTrue("Cancellation and no-account callbacks must exist",
-            html.contains("window.onNativeGoogleSignInCancelled") && html.contains("window.onNativeGoogleNoAccount")
+        assertFalse("Obsolete silent restore bridge call must be removed",
+            html.contains("requestSilentGoogleRestoreIfSignedIn")
         )
-        assertTrue("Logout must also clear native Google session state",
+        assertTrue("Stale loading recovery and watch-page re-render protection must exist",
+            html.contains("window.recoverStaleGoogleLoadingIfIdle") &&
+            html.contains("""if (currentPage === "watch")""")
+        )
+        assertTrue("Cancellation, no-account, and logout cleanup callbacks must exist",
+            html.contains("window.onNativeGoogleSignInCancelled") &&
+            html.contains("window.onNativeGoogleNoAccount") &&
             html.contains("window.AndroidBridge.signOutGoogle()")
         )
 
