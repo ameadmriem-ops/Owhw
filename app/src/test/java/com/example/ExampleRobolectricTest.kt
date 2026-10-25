@@ -1,15 +1,23 @@
 package com.example
 
 import android.content.Context
+import android.content.pm.ActivityInfo
+import android.view.TextureView
+import android.view.View
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import android.os.Looper
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -275,5 +283,113 @@ class ExampleRobolectricTest {
         assertTrue("Home news card must include circular comment and link overlay buttons", html.contains("home-news-circle-btn comment-btn") && html.contains("home-news-circle-btn link-btn"))
         assertTrue("Home news cards must reuse window.allNewsItems and handleNewsCardClick", html.contains("window.renderHomeNewsSectionBodyHtml") && html.contains("window.refreshHomeNewsSectionDom"))
     }
+
+    @OptIn(UnstableApi::class)
+    @Test
+    fun testEpisodeWatchAutoLandscapeAnd180VideoRotationFlow() {
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        val activity = controller.get()
+        shadowOf(Looper.getMainLooper()).idle()
+
+        // 1. Non-watch pages start in Portrait with WebView visible and native player hidden
+        assertEquals(
+            "Non-watch screens must stay in Portrait orientation",
+            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT,
+            activity.requestedOrientation
+        )
+        assertEquals(View.GONE, activity.playerContainer.visibility)
+        assertEquals(View.VISIBLE, activity.webView.visibility)
+
+        // 2. Simulate post-AdMob episode watch launch -> Auto-Landscape & aspect-ratio FIT
+        activity.playStream("https://example.com/episodes/ep1.mp4", "الحلقة 1")
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertEquals("Player container must become visible on watch", View.VISIBLE, activity.playerContainer.visibility)
+        assertEquals("WebView must hide cleanly without reloading", View.GONE, activity.webView.visibility)
+        assertTrue("Watch landscape flag must be active", activity.isWatchLandscapeActive)
+        assertEquals(
+            "Watch screen must enter Landscape automatically without manual phone rotation",
+            ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE,
+            activity.requestedOrientation
+        )
+        assertEquals(
+            "Video must preserve original aspect ratio without stretching",
+            AspectRatioFrameLayout.RESIZE_MODE_FIT,
+            activity.playerView.resizeMode
+        )
+
+        // 3. Old orientation toggle button is removed while all other player controls remain intact
+        val legacyFullscreenBtn = activity.playerView.findViewById<View>(androidx.media3.ui.R.id.exo_fullscreen)
+        assertEquals("Legacy portrait/landscape fullscreen button must be hidden", View.GONE, legacyFullscreenBtn?.visibility ?: View.GONE)
+        assertNotNull("Play/Pause control must remain intact", activity.playerView.findViewById<View>(androidx.media3.ui.R.id.exo_play_pause))
+        assertNotNull("Progress/Seekbar control must remain intact", activity.playerView.findViewById<View>(androidx.media3.ui.R.id.exo_progress))
+        assertNotNull("Subtitle button must remain intact", activity.playerView.findViewById<View>(androidx.media3.ui.R.id.exo_subtitle))
+        assertNotNull("Settings (audio/speed) button must remain intact", activity.playerView.findViewById<View>(androidx.media3.ui.R.id.exo_settings))
+
+        // 4. Verify TextureView surface and new Video Direction button (0° -> 180° -> 0°)
+        val videoSurface = activity.playerView.videoSurfaceView
+        assertTrue("PlayerView surface must be a TextureView so video frames rotate cleanly", videoSurface is TextureView)
+        assertEquals("Initial video rotation must be 0 degrees", 0f, videoSurface!!.rotation, 0.01f)
+
+        val directionBtn = activity.playerTopBar.findViewWithTag<View>("video_direction_button")
+        assertNotNull("New Video Direction button must exist in player top bar", directionBtn)
+
+        // First press -> rotates ONLY video 180° while keeping Landscape & controls upright
+        directionBtn.performClick()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertTrue("Video 180° state flag must be true after first click", activity.isVideoRotated180)
+        assertEquals("Video surface must rotate to 180 degrees", 180f, videoSurface.rotation, 0.01f)
+        assertEquals(
+            "Player must remain in Landscape (never switch to Portrait) when rotating video direction",
+            ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE,
+            activity.requestedOrientation
+        )
+        assertEquals("Player top bar controls must stay upright (0f)", 0f, activity.playerTopBar.rotation, 0.01f)
+        assertEquals("PlayerView UI container must stay upright (0f)", 0f, activity.playerView.rotation, 0.01f)
+
+        // Second press -> returns video to normal 0° while remaining in Landscape
+        directionBtn.performClick()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertFalse("Video 180° state flag must return to false on second click", activity.isVideoRotated180)
+        assertEquals("Video surface must return to normal 0 degrees", 0f, videoSurface.rotation, 0.01f)
+        assertEquals(
+            "Player must still remain in Landscape",
+            ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE,
+            activity.requestedOrientation
+        )
+
+        // Rotate to 180° again, then press Back -> closes player, resets video rotation, and restores Portrait
+        directionBtn.performClick()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(180f, videoSurface.rotation, 0.01f)
+
+        activity.onBackPressedDispatcher.onBackPressed()
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertEquals("Player container must close on single Back press", View.GONE, activity.playerContainer.visibility)
+        assertEquals("WebView (Episodes page) must become visible again", View.VISIBLE, activity.webView.visibility)
+        assertFalse("Watch landscape flag must be cleared on exit", activity.isWatchLandscapeActive)
+        assertFalse("Video 180° rotation must reset on exit", activity.isVideoRotated180)
+        assertEquals(
+            "Returning to Episodes or previous page must restore Portrait orientation",
+            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT,
+            activity.requestedOrientation
+        )
+
+        controller.pause().stop().destroy()
+    }
+
+    @Test
+    fun testFallbackWebWatchLandscapeAndDirectionButtonAssets() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val html = context.assets.open("index.html").bufferedReader(Charsets.UTF_8).use { it.readText() }
+
+        assertTrue("Fallback watch must trigger native landscape bridge", html.contains("window.AndroidBridge.enterWatchLandscape()"))
+        assertTrue("Fallback watch must preserve video aspect ratio via object-fit:contain", html.contains("object-fit:contain"))
+        assertTrue("Fallback watch must disable legacy HTML5 fullscreen button", html.contains("""controlsList="nofullscreen"""") && html.contains("::-webkit-media-controls-fullscreen-button{display:none!important;}"))
+        assertTrue("Fallback watch must include new Video Direction button", html.contains("""id="fallbackRotateVideoBtn"""") && html.contains("window.toggleFallbackVideoDirection()"))
+        assertTrue("Leaving fallback watch must restore Portrait orientation", html.contains("window.exitFallbackWatchMode") && html.contains("window.AndroidBridge.exitWatchLandscape()"))
+    }
 }
+
 

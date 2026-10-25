@@ -40,6 +40,7 @@ import android.os.Looper
 import android.text.TextUtils
 import android.util.Log
 import android.view.Gravity
+import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
@@ -96,6 +97,7 @@ import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.extractor.DefaultExtractorsFactory
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.google.android.gms.ads.AdError
 import com.google.android.gms.ads.AdRequest
@@ -303,7 +305,7 @@ class MainActivity : ComponentActivity() {
         private const val STORAGE_PERMISSION_REQUEST_CODE = 1003
     }
 
-    private lateinit var webView: WebView
+    internal lateinit var webView: WebView
     private lateinit var assetLoader: WebViewAssetLoader
     private var customView: View? = null
     private var customViewCallback: WebChromeClient.CustomViewCallback? = null
@@ -328,9 +330,9 @@ class MainActivity : ComponentActivity() {
     }
 
     // Native Media3 ExoPlayer components
-    private lateinit var playerContainer: FrameLayout
-    private lateinit var playerView: PlayerView
-    private lateinit var playerTopBar: LinearLayout
+    internal lateinit var playerContainer: FrameLayout
+    internal lateinit var playerView: PlayerView
+    internal lateinit var playerTopBar: LinearLayout
     private lateinit var playerTitleTextView: TextView
     private lateinit var playerProgressBar: ProgressBar
     private lateinit var playerErrorContainer: LinearLayout
@@ -338,7 +340,11 @@ class MainActivity : ComponentActivity() {
     private var exoPlayer: ExoPlayer? = null
     private var currentStreamUrl: String? = null
     private var currentStreamTitle: String? = null
-    private var isPlayerFullscreen: Boolean = false
+    internal var isWatchLandscapeActive: Boolean = false
+    internal var isVideoRotated180: Boolean = false
+    internal lateinit var rotateVideoPlayerButton: LinearLayout
+    private lateinit var rotateVideoIconView: android.widget.ImageView
+    private lateinit var rotateVideoLabelView: TextView
     private var playbackTicker: Runnable? = null
     private val playbackHandler = Handler(Looper.getMainLooper())
 
@@ -406,6 +412,9 @@ class MainActivity : ComponentActivity() {
             insets
         }
 
+        if (!isWatchLandscapeActive) {
+            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        }
         applyImmersiveFullScreen()
 
         // Initialize Notification Channel and FCM
@@ -440,6 +449,11 @@ class MainActivity : ComponentActivity() {
             webView.onResume()
         } catch (e: Exception) {
             Log.w(TAG, "Error resuming webView: ${e.message}")
+        }
+        if ((::playerContainer.isInitialized && playerContainer.visibility == View.VISIBLE) || isWatchLandscapeActive) {
+            if (requestedOrientation != ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE) {
+                requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+            }
         }
         applyImmersiveFullScreen()
         if (isWebViewLoaded) {
@@ -802,7 +816,11 @@ class MainActivity : ComponentActivity() {
                     customView = null
                     customViewCallback?.onCustomViewHidden()
                     customViewCallback = null
-                    applyImmersiveFullScreen()
+                    if (!::playerContainer.isInitialized || playerContainer.visibility != View.VISIBLE) {
+                        exitWatchLandscapeMode()
+                    } else {
+                        applyImmersiveFullScreen()
+                    }
                 }
 
                 override fun getDefaultVideoPoster(): Bitmap? {
@@ -830,12 +848,15 @@ class MainActivity : ComponentActivity() {
             setBackgroundColor(Color.BLACK)
         }
 
-        playerView = PlayerView(this).apply {
+        playerView = (LayoutInflater.from(this)
+            .inflate(R.layout.view_exo_texture_player, playerContainer, false) as PlayerView).apply {
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
+            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
             useController = true
+            setShowSubtitleButton(true)
             keepScreenOn = true
             setBackgroundColor(Color.BLACK)
             controllerShowTimeoutMs = 5000
@@ -844,15 +865,15 @@ class MainActivity : ComponentActivity() {
             setControllerVisibilityListener(PlayerView.ControllerVisibilityListener { visibility ->
                 playerTopBar.visibility = visibility
             })
-            setFullscreenButtonClickListener { isFullscreen ->
-                toggleFullscreen(isFullscreen)
-            }
+            // Explicitly hide Media3's legacy portrait/landscape fullscreen toggle buttons
+            findViewById<View>(androidx.media3.ui.R.id.exo_fullscreen)?.visibility = View.GONE
+            findViewById<View>(androidx.media3.ui.R.id.exo_minimal_fullscreen)?.visibility = View.GONE
         }
         playerContainer.addView(playerView)
 
         val density = resources.displayMetrics.density
 
-        // Top bar overlay for title and back button (integrated with controller)
+        // Top bar overlay for title, video direction toggle, cast, and report (integrated with controller)
         playerTopBar = LinearLayout(this).apply {
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -863,7 +884,7 @@ class MainActivity : ComponentActivity() {
             orientation = LinearLayout.HORIZONTAL
             setPadding(
                 (16 * density).toInt(),
-                (16 * density).toInt(),
+                (14 * density).toInt(),
                 (16 * density).toInt(),
                 (12 * density).toInt()
             )
@@ -877,9 +898,10 @@ class MainActivity : ComponentActivity() {
 
         // Back button identical to .back-btn used across the rest of the application
         val backButton = TextView(this).apply {
-            val padVertical = (8 * density).toInt()
+            val padVertical = (10 * density).toInt()
             val padHorizontal = (18 * density).toInt()
             setPadding(padHorizontal, padVertical, padHorizontal, padVertical)
+            minHeight = (48 * density).toInt()
 
             text = "← رجوع"
             setTextColor(Color.WHITE)
@@ -914,6 +936,7 @@ class MainActivity : ComponentActivity() {
             elevation = 4 * density
             isClickable = true
             isFocusable = true
+            tag = "player_back_button"
             contentDescription = "رجوع"
 
             layoutParams = LinearLayout.LayoutParams(
@@ -924,11 +947,7 @@ class MainActivity : ComponentActivity() {
             }
 
             setOnClickListener {
-                if (isPlayerFullscreen) {
-                    exitFullscreen()
-                } else {
-                    closeNativePlayer()
-                }
+                closeNativePlayer()
             }
         }
         playerTopBar.addView(backButton)
@@ -952,6 +971,63 @@ class MainActivity : ComponentActivity() {
             gravity = Gravity.CENTER_VERTICAL
         }
         playerTopBar.addView(playerTitleTextView)
+
+        // New Video Direction Toggle Button:
+        // Rotates the video frame 180° inside the player while keeping the player in Landscape
+        // and keeping all playback controls upright and functional.
+        rotateVideoPlayerButton = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            val padV = (8 * density).toInt()
+            val padH = (12 * density).toInt()
+            setPadding(padH, padV, padH, padV)
+            minimumHeight = (48 * density).toInt()
+            minimumWidth = (48 * density).toInt()
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                marginEnd = (10 * density).toInt()
+                gravity = Gravity.CENTER_VERTICAL
+            }
+            isClickable = true
+            isFocusable = true
+            elevation = 4 * density
+            tag = "video_direction_button"
+            contentDescription = "تغيير اتجاه الفيديو"
+
+            rotateVideoIconView = android.widget.ImageView(this@MainActivity).apply {
+                val iconSz = (20 * density).toInt()
+                layoutParams = LinearLayout.LayoutParams(iconSz, iconSz).apply {
+                    marginEnd = (6 * density).toInt()
+                    gravity = Gravity.CENTER_VERTICAL
+                }
+                setImageResource(R.drawable.ic_video_rotate)
+                contentDescription = null
+            }
+            addView(rotateVideoIconView)
+
+            rotateVideoLabelView = TextView(this@MainActivity).apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    gravity = Gravity.CENTER_VERTICAL
+                }
+                text = "اتجاه الفيديو"
+                setTextColor(Color.WHITE)
+                textSize = 13f
+                typeface = Typeface.DEFAULT_BOLD
+                includeFontPadding = false
+            }
+            addView(rotateVideoLabelView)
+
+            setOnClickListener {
+                toggleVideoDisplayDirection()
+            }
+        }
+        updateRotateVideoButtonUI()
+        playerTopBar.addView(rotateVideoPlayerButton)
 
         // Cast button matching the reference design:
         // Square frame with rounded corners, thick orange border, dark background,
@@ -1205,11 +1281,14 @@ class MainActivity : ComponentActivity() {
         Log.d(TAG, "ExoPlayer: Playing stream: $streamUrl (Title: $title)")
 
         runOnUiThread {
-            if (isPlayerFullscreen) {
-                exitFullscreen()
+            val wasAlreadyVisible = playerContainer.visibility == View.VISIBLE
+            if (!wasAlreadyVisible) {
+                isVideoRotated180 = false
+                applyVideoDisplayRotation(animate = false)
             }
             playerContainer.visibility = View.VISIBLE
             webView.visibility = View.GONE
+            enterWatchLandscapeMode()
             playerTitleTextView.text = title.ifBlank { "BLACK ANIME" }
             playerErrorContainer.visibility = View.GONE
             playerProgressBar.visibility = View.VISIBLE
@@ -1378,6 +1457,8 @@ class MainActivity : ComponentActivity() {
                     prepare()
                     playWhenReady = true
                 }
+                playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                applyVideoDisplayRotation(animate = false)
                 playerTopBar.visibility = View.GONE
                 playerView.hideController()
             } catch (e: Exception) {
@@ -1392,10 +1473,9 @@ class MainActivity : ComponentActivity() {
     fun closeNativePlayer() {
         runOnUiThread {
             stopPlaybackTicker()
-            if (isPlayerFullscreen) {
-                exitFullscreen()
-            }
             exoPlayer?.stop()
+            isVideoRotated180 = false
+            applyVideoDisplayRotation(animate = false)
             playerView.hideController()
             playerTopBar.visibility = View.GONE
             playerContainer.visibility = View.GONE
@@ -1403,7 +1483,7 @@ class MainActivity : ComponentActivity() {
             isCastConnected = false
             castDeviceName = null
             updateCastButtonUI()
-            applyImmersiveFullScreen()
+            exitWatchLandscapeMode()
         }
     }
 
@@ -1875,11 +1955,7 @@ class MainActivity : ComponentActivity() {
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 if (playerContainer.visibility == View.VISIBLE) {
-                    if (isPlayerFullscreen) {
-                        exitFullscreen()
-                    } else {
-                        closeNativePlayer()
-                    }
+                    closeNativePlayer()
                 } else if (customView != null) {
                     webView.webChromeClient?.onHideCustomView()
                 } else {
@@ -1927,42 +2003,125 @@ class MainActivity : ComponentActivity() {
         })
     }
 
-    private fun enterFullscreen() {
-        if (isPlayerFullscreen) return
-        isPlayerFullscreen = true
-        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+    internal fun enterWatchLandscapeMode() {
+        isWatchLandscapeActive = true
+        if (requestedOrientation != ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE) {
+            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        }
         applyImmersiveFullScreen()
-        val density = resources.displayMetrics.density
-        playerTopBar.setPadding(
-            (16 * density).toInt(),
-            (14 * density).toInt(),
-            (16 * density).toInt(),
-            (12 * density).toInt()
-        )
-        playerView.showController()
+        if (::playerTopBar.isInitialized) {
+            val density = resources.displayMetrics.density
+            playerTopBar.setPadding(
+                (16 * density).toInt(),
+                (14 * density).toInt(),
+                (16 * density).toInt(),
+                (12 * density).toInt()
+            )
+        }
     }
 
-    private fun exitFullscreen() {
-        if (!isPlayerFullscreen) return
-        isPlayerFullscreen = false
-        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+    internal fun exitWatchLandscapeMode() {
+        val needsOrientationRestore = isWatchLandscapeActive ||
+            requestedOrientation == ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE ||
+            requestedOrientation == ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE ||
+            requestedOrientation == ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
+        isWatchLandscapeActive = false
+        if (needsOrientationRestore && requestedOrientation != ActivityInfo.SCREEN_ORIENTATION_PORTRAIT) {
+            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        }
         applyImmersiveFullScreen()
-        val density = resources.displayMetrics.density
-        playerTopBar.setPadding(
-            (16 * density).toInt(),
-            (14 * density).toInt(),
-            (16 * density).toInt(),
-            (12 * density).toInt()
-        )
-        playerView.showController()
     }
 
-    private fun toggleFullscreen(toFullscreen: Boolean? = null) {
-        val target = toFullscreen ?: !isPlayerFullscreen
-        if (target) {
-            enterFullscreen()
+    internal fun toggleVideoDisplayDirection() {
+        isVideoRotated180 = !isVideoRotated180
+        applyVideoDisplayRotation(animate = true)
+        if (::playerView.isInitialized) {
+            playerView.showController()
+        }
+    }
+
+    internal fun applyVideoDisplayRotation(animate: Boolean) {
+        val targetDegrees = if (isVideoRotated180) 180f else 0f
+        if (::playerView.isInitialized) {
+            val surface = playerView.videoSurfaceView
+            if (surface != null) {
+                surface.animate().cancel()
+                if (animate && surface.width > 0 && surface.height > 0) {
+                    surface.animate()
+                        .rotation(targetDegrees)
+                        .setDuration(200L)
+                        .start()
+                } else {
+                    surface.rotation = targetDegrees
+                }
+            }
+        }
+        updateRotateVideoButtonUI()
+    }
+
+    private fun updateRotateVideoButtonUI() {
+        if (!::rotateVideoPlayerButton.isInitialized || !::rotateVideoLabelView.isInitialized || !::rotateVideoIconView.isInitialized) {
+            return
+        }
+        val density = resources.displayMetrics.density
+        if (isVideoRotated180) {
+            rotateVideoLabelView.text = "اتجاه الفيديو 180°"
+            rotateVideoLabelView.setTextColor(Color.parseColor("#00E5FF"))
+            rotateVideoIconView.setColorFilter(Color.parseColor("#00E5FF"))
+            rotateVideoIconView.rotation = 180f
+            rotateVideoPlayerButton.contentDescription = "تغيير اتجاه الفيديو — معكوس 180 درجة"
+
+            val activeBg = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = 22 * density
+                setColor(Color.parseColor("#102A36"))
+                setStroke((1.5f * density).toInt(), Color.parseColor("#00D2FF"))
+            }
+            val pressedBg = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = 22 * density
+                setColor(Color.parseColor("#183E4F"))
+                setStroke((1.5f * density).toInt(), Color.parseColor("#38BDF8"))
+            }
+            val stateList = StateListDrawable().apply {
+                addState(intArrayOf(android.R.attr.state_pressed), pressedBg)
+                addState(intArrayOf(android.R.attr.state_focused), pressedBg)
+                addState(intArrayOf(), activeBg)
+            }
+            rotateVideoPlayerButton.background = RippleDrawable(
+                ColorStateList.valueOf(Color.parseColor("#4400E5FF")),
+                stateList,
+                null
+            )
         } else {
-            exitFullscreen()
+            rotateVideoLabelView.text = "اتجاه الفيديو"
+            rotateVideoLabelView.setTextColor(Color.WHITE)
+            rotateVideoIconView.setColorFilter(Color.WHITE)
+            rotateVideoIconView.rotation = 0f
+            rotateVideoPlayerButton.contentDescription = "تغيير اتجاه الفيديو"
+
+            val normalBg = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = 22 * density
+                setColor(Color.parseColor("#181C24"))
+                setStroke((1 * density).toInt(), Color.parseColor("#3A4150"))
+            }
+            val pressedBg = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = 22 * density
+                setColor(Color.parseColor("#242A36"))
+                setStroke((1 * density).toInt(), Color.parseColor("#00D2FF"))
+            }
+            val stateList = StateListDrawable().apply {
+                addState(intArrayOf(android.R.attr.state_pressed), pressedBg)
+                addState(intArrayOf(android.R.attr.state_focused), pressedBg)
+                addState(intArrayOf(), normalBg)
+            }
+            rotateVideoPlayerButton.background = RippleDrawable(
+                ColorStateList.valueOf(Color.parseColor("#33FFFFFF")),
+                stateList,
+                null
+            )
         }
     }
 
@@ -1991,26 +2150,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        if (playerContainer.visibility == View.VISIBLE) {
-            val isLandscape = newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE
-            val density = resources.displayMetrics.density
-            if (isLandscape && !isPlayerFullscreen) {
-                isPlayerFullscreen = true
-                playerTopBar.setPadding(
-                    (16 * density).toInt(),
-                    (14 * density).toInt(),
-                    (16 * density).toInt(),
-                    (12 * density).toInt()
-                )
-            } else if (!isLandscape && isPlayerFullscreen) {
-                isPlayerFullscreen = false
-                playerTopBar.setPadding(
-                    (16 * density).toInt(),
-                    (16 * density).toInt(),
-                    (16 * density).toInt(),
-                    (12 * density).toInt()
-                )
-            }
+        if (::playerContainer.isInitialized && playerContainer.visibility == View.VISIBLE) {
+            applyImmersiveFullScreen()
+            applyVideoDisplayRotation(animate = false)
         }
     }
 
@@ -2619,6 +2761,20 @@ class MainActivity : ComponentActivity() {
         @JavascriptInterface
         fun closePlayer() {
             activity.closeNativePlayer()
+        }
+
+        @JavascriptInterface
+        fun enterWatchLandscape() {
+            activity.runOnUiThread {
+                activity.enterWatchLandscapeMode()
+            }
+        }
+
+        @JavascriptInterface
+        fun exitWatchLandscape() {
+            activity.runOnUiThread {
+                activity.exitWatchLandscapeMode()
+            }
         }
 
         @JavascriptInterface
