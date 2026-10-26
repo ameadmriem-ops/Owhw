@@ -595,7 +595,99 @@ class ExampleRobolectricTest {
 
         controller.stop().destroy()
     }
+
+    @Test
+    fun testSideDrawerButtonAppearanceInvarianceAndDetailsInteractiveFeatures() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val html = context.assets.open("index.html").bufferedReader(Charsets.UTF_8).use { it.readText() }
+
+        // 1. Side drawer button (#topDrawerBtn) keeps original hamburger SVG and never swaps in Google avatar
+        assertTrue("topDrawerBtn must preserve class and openDrawer handler",
+            html.contains("""<button id="topDrawerBtn" class="top-drawer-btn" onclick="openDrawer()"""")
+        )
+        assertTrue("topAvatarCircle must stay hidden with !important",
+            html.contains("""#topDrawerBtn #topAvatarCircle""") &&
+            html.contains("""display: none !important""")
+        )
+        assertTrue("updateTopBarAvatar must keep topHamburgerSvg block and topAvatarCircle hidden",
+            html.contains("""hamburger.style.display = "block";""") &&
+            html.contains("""circle.style.display = "none";""") &&
+            !html.contains("""circle.style.display = "flex";""")
+        )
+
+        // 2. Details page interactive title & poster viewer & independent download buttons exist ONLY in Details
+        assertTrue("Details main title must have id detailsMainTitle and bindDetailsTitleInteractions",
+            html.contains("""id="detailsMainTitle"""") &&
+            html.contains("window.bindDetailsTitleInteractions(item.firebaseId, rawTitle)")
+        )
+        assertTrue("Clipboard copy toast message must match exact Arabic copy notification",
+            html.contains("تم نسخ العنوان بنجاح")
+        )
+        assertTrue("Fullscreen poster viewer modal and back-button handler must exist",
+            html.contains("""id="detailsPosterViewerOverlay"""") &&
+            html.contains("window.openDetailsPosterViewer") &&
+            html.contains("window.closeDetailsPosterViewer") &&
+            html.contains("if (window.isDetailsPosterViewerOpen")
+        )
+        assertTrue("Independent portrait and landscape poster download buttons must exist",
+            html.contains("""id="btnDownloadPortraitPoster"""") &&
+            html.contains("""id="btnDownloadLandscapePoster"""") &&
+            html.contains("تحميل البوستر العمودي") &&
+            html.contains("تحميل البوستر الأفقي")
+        )
+        assertTrue("Landscape poster helper must never fallback to item.poster",
+            html.contains("window.getDetailsLandscapePosterUrl = function(item)") &&
+            html.contains("NEVER fallback to portrait item.poster")
+        )
+
+        // 3. Test native clipboard copy, image format preservation, filename generation, and MediaStore save
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        val activity = controller.get()
+        shadowOf(Looper.getMainLooper()).idle()
+
+        val bridge = MainActivity.AdMobBridge(activity, android.webkit.WebView(activity))
+        val longArabicTitle = "هجوم العمالقة: الموسم النهائي - القسم الثاني الكامل المترجم"
+        assertTrue("Clipboard bridge must return true for valid title",
+            bridge.copyTextToClipboard(longArabicTitle, "عنوان العمل")
+        )
+        val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        assertEquals(longArabicTitle, clipboard.primaryClip?.getItemAt(0)?.text?.toString())
+        assertFalse("Clipboard bridge must reject blank text", bridge.copyTextToClipboard("   ", "عنوان العمل"))
+
+        // Verify magic-byte & MIME extension preservation (PNG, WEBP, JPG)
+        val pngMagic = byteArrayOf(
+            0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+            0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52
+        )
+        val webpMagic = byteArrayOf(
+            0x52, 0x49, 0x46, 0x46, 0x24, 0x00, 0x00, 0x00,
+            0x57, 0x45, 0x42, 0x50, 0x56, 0x50, 0x38, 0x20
+        )
+        val jpgMagic = byteArrayOf(
+            0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte(),
+            0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01
+        )
+        assertEquals("png" to "image/png", activity.resolvePosterExtensionAndMime("https://cdn.example.com/img", "application/octet-stream", pngMagic))
+        assertEquals("webp" to "image/webp", activity.resolvePosterExtensionAndMime("https://cdn.example.com/img", "image/webp", webpMagic))
+        assertEquals("jpg" to "image/jpeg", activity.resolvePosterExtensionAndMime("https://cdn.example.com/poster.jpg?token=1", "image/jpeg", jpgMagic))
+
+        // Verify clear sanitized filenames for Portrait and Landscape
+        val portraitName = activity.buildPosterFileName("Solo Leveling: Season 2 / Arise?", "portrait", "webp")
+        val landscapeName = activity.buildPosterFileName("ون بيس: آرك إيغهيد", "landscape", "png")
+        assertEquals("Solo Leveling Season 2 Arise - Portrait.webp", portraitName)
+        assertEquals("ون بيس آرك إيغهيد - Landscape.png", landscapeName)
+
+        // Verify MediaStore write succeeds without broad storage permissions
+        val savedMediaName = activity.savePosterBytesToDevice(portraitName, "image/webp", webpMagic)
+        assertNotNull("MediaStore poster save should succeed on API 34 without storage permission", savedMediaName)
+
+        // Verify invalid URL is rejected cleanly without crashing
+        assertEquals("INVALID_URL", activity.downloadPosterImage("fid1:landscape", "   ", "Test", "landscape"))
+
+        controller.pause().stop().destroy()
+    }
 }
+
 
 
 

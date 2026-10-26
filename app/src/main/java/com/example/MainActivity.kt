@@ -8,11 +8,15 @@ import android.app.DownloadManager
 import android.content.BroadcastReceiver
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.media.MediaScannerConnection
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.Environment
+import android.provider.MediaStore
 import androidx.core.content.FileProvider
 import java.io.File
 import java.io.ByteArrayInputStream
@@ -68,6 +72,7 @@ import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.security.MessageDigest
 import android.widget.Button
@@ -275,6 +280,41 @@ object PosterImageCache {
         return null
     }
 
+    fun fetchRawImageBytesAndMime(urlStr: String): Pair<ByteArray, String> {
+        val inRam = memoryCache.get(urlStr)
+        if (inRam != null && inRam.isNotEmpty()) {
+            return inRam to guessMimeType(urlStr, null)
+        }
+        val client = okHttpClient ?: OkHttpClient.Builder()
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(25, TimeUnit.SECONDS)
+            .followRedirects(true)
+            .followSslRedirects(true)
+            .build()
+
+        val req = Request.Builder()
+            .url(urlStr)
+            .header("User-Agent", "Mozilla/5.0 (Linux; Android; BlackAnime/1.0)")
+            .header("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8")
+            .build()
+
+        client.newCall(req).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw IllegalStateException("HTTP_${response.code}")
+            }
+            val bytes = response.body?.bytes()
+            if (bytes == null || bytes.isEmpty()) {
+                throw IllegalStateException("EMPTY_BODY")
+            }
+            val contentTypeHeader = response.header("Content-Type")
+            val mimeType = guessMimeType(urlStr, contentTypeHeader)
+            if (bytes.size <= 15 * 1024 * 1024) {
+                memoryCache.put(urlStr, bytes)
+            }
+            return bytes to (contentTypeHeader?.split(";")?.firstOrNull()?.trim()?.lowercase().takeIf { !it.isNullOrBlank() } ?: mimeType)
+        }
+    }
+
     private fun guessMimeType(url: String, headerContentType: String?): String {
         if (!headerContentType.isNullOrBlank()) {
             val base = headerContentType.split(";")[0].trim().lowercase()
@@ -361,6 +401,7 @@ class MainActivity : ComponentActivity() {
     var pendingDownloadRequest: DownloadRequest? = null
     val activeDownloads = ConcurrentHashMap<Long, DownloadItemInfo>()
     val episodeKeyToDownloadId = ConcurrentHashMap<String, Long>()
+    internal val activePosterDownloads = ConcurrentHashMap<String, Boolean>()
     private var isProgressPollingActive: Boolean = false
     private var downloadCompleteReceiver: BroadcastReceiver? = null
 
@@ -2450,6 +2491,257 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    internal fun normalizePosterUrlForDownload(rawUrl: String): String {
+        val trimmed = rawUrl.trim()
+        if (trimmed.isBlank()) return ""
+        val pixeldrainPattern = Regex("""(?i)^(?:https?://)?(?:www\.)?pixeldrain\.com/(?:u|file|api/file)/([a-zA-Z0-9_-]+).*$""")
+        val pdMatch = pixeldrainPattern.find(trimmed)
+        if (pdMatch != null) {
+            return "https://pixeldrain.com/api/file/${pdMatch.groupValues[1]}"
+        }
+        return trimmed
+    }
+
+    internal fun isLikelyValidImagePayload(bytes: ByteArray, contentType: String?): Boolean {
+        if (bytes.size < 8) return false
+        // Reject HTML/JSON error bodies disguised with status 200
+        val headAscii = String(bytes, 0, minOf(bytes.size, 64), Charsets.ISO_8859_1).trimStart().lowercase()
+        if (headAscii.startsWith("<!doctype html") || headAscii.startsWith("<html") || headAscii.startsWith("{\"error\"")) {
+            return false
+        }
+        // Check magic byte signatures for JPEG, PNG, WebP, GIF, BMP, AVIF
+        val isJpeg = bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte() && bytes[2] == 0xFF.toByte()
+        val isPng = bytes[0] == 0x89.toByte() && bytes[1] == 0x50.toByte() && bytes[2] == 0x4E.toByte() && bytes[3] == 0x47.toByte()
+        val isGif = bytes[0] == 0x47.toByte() && bytes[1] == 0x49.toByte() && bytes[2] == 0x46.toByte() && bytes[3] == 0x38.toByte()
+        val isWebp = bytes.size >= 12 &&
+            bytes[0] == 0x52.toByte() && bytes[1] == 0x49.toByte() && bytes[2] == 0x46.toByte() && bytes[3] == 0x46.toByte() &&
+            bytes[8] == 0x57.toByte() && bytes[9] == 0x45.toByte() && bytes[10] == 0x42.toByte() && bytes[11] == 0x50.toByte()
+        val isBmp = bytes[0] == 0x42.toByte() && bytes[1] == 0x4D.toByte()
+        val isAvif = bytes.size >= 12 &&
+            bytes[4] == 0x66.toByte() && bytes[5] == 0x74.toByte() && bytes[6] == 0x79.toByte() && bytes[7] == 0x70.toByte()
+        if (isJpeg || isPng || isGif || isWebp || isBmp || isAvif) return true
+        return contentType?.lowercase()?.startsWith("image/") == true
+    }
+
+    internal fun resolvePosterExtensionAndMime(
+        url: String,
+        contentTypeHeader: String?,
+        bytes: ByteArray? = null
+    ): Pair<String, String> {
+        if (bytes != null && bytes.size >= 12) {
+            if (bytes[0] == 0x89.toByte() && bytes[1] == 0x50.toByte() && bytes[2] == 0x4E.toByte() && bytes[3] == 0x47.toByte()) {
+                return "png" to "image/png"
+            }
+            if (bytes[0] == 0x52.toByte() && bytes[1] == 0x49.toByte() && bytes[2] == 0x46.toByte() && bytes[3] == 0x46.toByte() &&
+                bytes[8] == 0x57.toByte() && bytes[9] == 0x45.toByte() && bytes[10] == 0x42.toByte() && bytes[11] == 0x50.toByte()
+            ) {
+                return "webp" to "image/webp"
+            }
+            if (bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte() && bytes[2] == 0xFF.toByte()) {
+                return "jpg" to "image/jpeg"
+            }
+            if (bytes[0] == 0x47.toByte() && bytes[1] == 0x49.toByte() && bytes[2] == 0x46.toByte() && bytes[3] == 0x38.toByte()) {
+                return "gif" to "image/gif"
+            }
+        }
+
+        val cleanMime = contentTypeHeader?.split(";")?.firstOrNull()?.trim()?.lowercase().orEmpty()
+        when (cleanMime) {
+            "image/png" -> return "png" to "image/png"
+            "image/webp" -> return "webp" to "image/webp"
+            "image/gif" -> return "gif" to "image/gif"
+            "image/bmp", "image/x-ms-bmp" -> return "bmp" to "image/bmp"
+            "image/avif" -> return "avif" to "image/avif"
+            "image/jpeg", "image/jpg" -> return "jpg" to "image/jpeg"
+        }
+
+        val decodedPath = try {
+            Uri.decode(Uri.parse(url).path ?: url)
+        } catch (_: Exception) {
+            url
+        }.substringBefore("?").substringBefore("#").lowercase()
+
+        return when {
+            decodedPath.endsWith(".png") -> "png" to "image/png"
+            decodedPath.endsWith(".webp") -> "webp" to "image/webp"
+            decodedPath.endsWith(".gif") -> "gif" to "image/gif"
+            decodedPath.endsWith(".bmp") -> "bmp" to "image/bmp"
+            decodedPath.endsWith(".avif") -> "avif" to "image/avif"
+            decodedPath.endsWith(".jpeg") -> "jpeg" to "image/jpeg"
+            else -> "jpg" to "image/jpeg"
+        }
+    }
+
+    internal fun buildPosterFileName(contentTitle: String, posterKind: String, ext: String): String {
+        val kindTag = if (posterKind.equals("landscape", ignoreCase = true)) "Landscape" else "Portrait"
+        val cleanExt = ext.trim().trimStart('.').lowercase().ifBlank { "jpg" }
+        val sanitizedTitle = contentTitle
+            .replace(Regex("""[\\/:*?"<>|\p{Cntrl}]+"""), " ")
+            .replace(Regex("""\s+"""), " ")
+            .trim()
+            .take(80)
+            .trim()
+            .ifBlank { "BLACK_ANIME" }
+        return "$sanitizedTitle - $kindTag.$cleanExt"
+    }
+
+    internal fun savePosterBytesToDevice(fileName: String, mimeType: String, bytes: ByteArray): String? {
+        if (bytes.isEmpty()) return null
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val values = ContentValues().apply {
+                    put(MediaStore.Images.Media.DISPLAY_NAME, fileName)
+                    put(MediaStore.Images.Media.MIME_TYPE, mimeType)
+                    put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/BLACK_ANIME")
+                    put(MediaStore.Images.Media.IS_PENDING, 1)
+                }
+                val resolver = contentResolver
+                val itemUri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+                    ?: return null
+                var wroteOk = false
+                try {
+                    resolver.openOutputStream(itemUri)?.use { out ->
+                        out.write(bytes)
+                        out.flush()
+                        wroteOk = true
+                    }
+                    if (!wroteOk) {
+                        resolver.delete(itemUri, null, null)
+                        return null
+                    }
+                    val commitValues = ContentValues().apply {
+                        put(MediaStore.Images.Media.IS_PENDING, 0)
+                    }
+                    resolver.update(itemUri, commitValues, null, null)
+                    fileName
+                } catch (e: Exception) {
+                    try {
+                        resolver.delete(itemUri, null, null)
+                    } catch (_: Exception) {}
+                    throw e
+                }
+            } else {
+                val baseDir = getExternalFilesDir(Environment.DIRECTORY_PICTURES) ?: File(filesDir, "Pictures")
+                val targetDir = File(baseDir, "BLACK_ANIME")
+                if (!targetDir.exists()) targetDir.mkdirs()
+                val outFile = File(targetDir, fileName)
+                outFile.outputStream().use { out ->
+                    out.write(bytes)
+                    out.flush()
+                }
+                if (!outFile.exists() || outFile.length() <= 0L) return null
+                MediaScannerConnection.scanFile(this, arrayOf(outFile.absolutePath), arrayOf(mimeType), null)
+                outFile.name
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "savePosterBytesToDevice failed: ${e.message}", e)
+            null
+        }
+    }
+
+    private fun isNetworkConnectedNow(): Boolean {
+        return try {
+            val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return true
+            val net = cm.activeNetwork ?: return false
+            val caps = cm.getNetworkCapabilities(net) ?: return false
+            caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        } catch (_: Exception) {
+            true
+        }
+    }
+
+    private fun notifyPosterDownloadStatus(
+        downloadKey: String,
+        status: String,
+        fileName: String,
+        errorMsg: String
+    ) {
+        runOnUiThread {
+            if (!isWebViewLoaded) return@runOnUiThread
+            val js = """
+                if (typeof window.onPosterDownloadStatusChanged === 'function') {
+                    window.onPosterDownloadStatusChanged(
+                        ${JSONObject.quote(downloadKey)},
+                        ${JSONObject.quote(status)},
+                        ${JSONObject.quote(fileName)},
+                        ${JSONObject.quote(errorMsg)}
+                    );
+                }
+            """.trimIndent()
+            webView.evaluateJavascript(js, null)
+        }
+    }
+
+    fun downloadPosterImage(
+        downloadKey: String,
+        rawUrl: String,
+        contentTitle: String,
+        posterKind: String
+    ): String {
+        val safeKey = downloadKey.trim().ifBlank { "poster_${System.currentTimeMillis()}" }
+        val normalizedUrl = normalizePosterUrlForDownload(rawUrl)
+        val parsedUri = try { Uri.parse(normalizedUrl) } catch (_: Exception) { null }
+        val scheme = parsedUri?.scheme?.lowercase().orEmpty()
+        if (normalizedUrl.isBlank() || (scheme != "http" && scheme != "https")) {
+            notifyPosterDownloadStatus(safeKey, "FAILED", "", "رابط الصورة غير صالح أو غير متوفر لهذا العمل.")
+            return "INVALID_URL"
+        }
+
+        if (activePosterDownloads.putIfAbsent(safeKey, true) != null) {
+            return "ALREADY_IN_PROGRESS"
+        }
+
+        notifyPosterDownloadStatus(safeKey, "STARTED", "", "")
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val (bytes, rawMime) = try {
+                    PosterImageCache.fetchRawImageBytesAndMime(normalizedUrl)
+                } catch (netErr: Exception) {
+                    if (!isNetworkConnectedNow()) {
+                        throw IllegalStateException("NETWORK_OFFLINE")
+                    }
+                    throw netErr
+                }
+
+                if (!isLikelyValidImagePayload(bytes, rawMime)) {
+                    throw IllegalStateException("NOT_AN_IMAGE")
+                }
+
+                val (ext, resolvedMime) = resolvePosterExtensionAndMime(normalizedUrl, rawMime, bytes)
+                val fileName = buildPosterFileName(contentTitle, posterKind, ext)
+                val savedName = savePosterBytesToDevice(fileName, resolvedMime, bytes)
+                    ?: throw IllegalStateException("STORAGE_WRITE_FAILED")
+
+                notifyPosterDownloadStatus(safeKey, "COMPLETED", savedName, "")
+            } catch (e: Exception) {
+                Log.e(TAG, "Poster download failed ($safeKey): ${e.message}")
+                val reason = when {
+                    e.message == "NETWORK_OFFLINE" ||
+                        e is java.net.UnknownHostException ||
+                        e is java.net.ConnectException ->
+                        "تعذر تحميل الصورة لعدم توفر اتصال بالإنترنت."
+                    e is java.net.SocketTimeoutException ->
+                        "انتهت مهلة الاتصال أثناء تحميل الصورة. يرجى المحاولة مجدداً."
+                    e.message?.startsWith("HTTP_403") == true || e.message?.startsWith("HTTP_401") == true ->
+                        "تم رفض الوصول إلى رابط الصورة من الخادم المصدر."
+                    e.message?.startsWith("HTTP_404") == true ->
+                        "ملف الصورة غير موجود على الرابط المحدد (404)."
+                    e.message == "NOT_AN_IMAGE" || e.message == "EMPTY_BODY" ->
+                        "الرابط لا يحتوي على ملف صورة صالح للتحميل."
+                    e.message == "STORAGE_WRITE_FAILED" || e is SecurityException ->
+                        "تعذر حفظ الصورة على ذاكرة الهاتف. تحقق من المساحة المتاحة."
+                    else ->
+                        "فشل تحميل وحفظ الصورة. يرجى التحقق من الشبكة والمحاولة ثانية."
+                }
+                notifyPosterDownloadStatus(safeKey, "FAILED", "", reason)
+            } finally {
+                activePosterDownloads.remove(safeKey)
+            }
+        }
+        return "STARTED"
+    }
+
     private fun startProgressPollingLoop() {
         if (isProgressPollingActive) return
         isProgressPollingActive = true
@@ -2995,6 +3287,37 @@ class MainActivity : ComponentActivity() {
                     Toast.makeText(activity, "جاري تهيئة رمز FCM، يرجى المحاولة بعد لحظات", Toast.LENGTH_SHORT).show()
                 }
             }
+        }
+
+        @JavascriptInterface
+        fun copyTextToClipboard(text: String, label: String): Boolean {
+            if (text.isBlank()) return false
+            return try {
+                val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                    ?: return false
+                val clipLabel = label.trim().ifBlank { "BLACK ANIME" }
+                val clip = ClipData.newPlainText(clipLabel, text)
+                clipboard.setPrimaryClip(clip)
+                true
+            } catch (e: Exception) {
+                Log.e(TAG, "copyTextToClipboard error: ${e.message}")
+                false
+            }
+        }
+
+        @JavascriptInterface
+        fun downloadPosterImage(
+            downloadKey: String,
+            imageUrl: String,
+            contentTitle: String,
+            posterKind: String
+        ): String {
+            return activity.downloadPosterImage(downloadKey, imageUrl, contentTitle, posterKind)
+        }
+
+        @JavascriptInterface
+        fun isPosterDownloadInProgress(downloadKey: String): Boolean {
+            return activity.activePosterDownloads.containsKey(downloadKey.trim())
         }
 
         @JavascriptInterface
