@@ -1002,9 +1002,14 @@ body.light-mode .home-card-sub {
   padding-top: max(12px, env(safe-area-inset-top));
   z-index: 100;
   direction: rtl;
-  pointer-events: auto;
+  pointer-events: none;
   background: linear-gradient(to bottom, rgba(0, 0, 0, 0.88) 0%, rgba(0, 0, 0, 0.5) 75%, transparent 100%);
   box-sizing: border-box;
+}
+
+.details-top-bar button,
+.details-top-actions {
+  pointer-events: auto;
 }
 
 body.light-mode .details-top-bar {
@@ -3772,109 +3777,6 @@ body.light-mode .details-main-title.is-expanded {
   border-color: rgba(229, 9, 20, 0.75);
 }
 
-.details-hero-zoom-badge {
-  position: absolute;
-  bottom: 74px;
-  left: 14px;
-  z-index: 7;
-  background: rgba(10, 10, 12, 0.76);
-  color: #f3f4f6;
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  border-radius: 20px;
-  padding: 5px 11px;
-  font-size: 11px;
-  font-weight: 800;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  cursor: pointer;
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.55);
-  user-select: none;
-  -webkit-user-select: none;
-}
-
-.details-hero-zoom-badge:active {
-  transform: scale(0.95);
-}
-
-body.light-mode .details-hero-zoom-badge {
-  background: rgba(255, 255, 255, 0.9);
-  color: #111827;
-  border-color: rgba(0, 0, 0, 0.14);
-}
-
-.details-poster-downloads-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  padding: 0 16px;
-  margin: 0 0 14px 0;
-  direction: rtl;
-}
-
-.details-poster-dl-btn {
-  flex: 1 1 155px;
-  min-height: 44px;
-  padding: 9px 13px;
-  border-radius: 12px;
-  background: linear-gradient(145deg, #17171b, #111114);
-  color: #f3f4f6;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  font-family: inherit;
-  font-size: 12.5px;
-  font-weight: 800;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  cursor: pointer;
-  transition: transform 0.15s ease, border-color 0.18s ease, background 0.18s ease, opacity 0.18s ease;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.38);
-  user-select: none;
-  -webkit-user-select: none;
-}
-
-.details-poster-dl-btn:active:not(:disabled) {
-  transform: scale(0.97);
-  border-color: #e50914;
-}
-
-.details-poster-dl-btn.is-downloading {
-  opacity: 0.78;
-  border-color: rgba(229, 9, 20, 0.55);
-  cursor: wait;
-}
-
-.details-poster-dl-btn.is-saved {
-  border-color: rgba(34, 197, 94, 0.65);
-  color: #4ade80;
-}
-
-.details-poster-dl-icon {
-  color: #e50914;
-  display: inline-flex;
-  align-items: center;
-  flex-shrink: 0;
-}
-
-.details-poster-dl-btn.is-saved .details-poster-dl-icon {
-  color: #4ade80;
-}
-
-body.light-mode .details-poster-dl-btn {
-  background: #ffffff;
-  color: #111827;
-  border: 1px solid #d1d5db;
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.06);
-}
-
-body.light-mode .details-poster-dl-btn.is-saved {
-  color: #15803d;
-  border-color: #22c55e;
-}
-
 /* Fullscreen In-App Poster Lightbox Viewer */
 .poster-viewer-overlay {
   display: none;
@@ -3899,48 +3801,19 @@ body.light-mode .details-poster-dl-btn.is-saved {
 .poster-viewer-topbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  justify-content: flex-end;
   padding: max(14px, env(safe-area-inset-top)) 16px 12px 16px;
   background: linear-gradient(to bottom, rgba(0, 0, 0, 0.85) 0%, transparent 100%);
   z-index: 3;
-  direction: rtl;
-}
-
-.poster-viewer-meta {
-  min-width: 0;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.poster-viewer-kind-badge {
-  display: inline-flex;
-  align-self: flex-start;
-  background: rgba(229, 9, 20, 0.92);
-  color: #fff;
-  font-size: 10.5px;
-  font-weight: 900;
-  padding: 2px 9px;
-  border-radius: 999px;
-}
-
-.poster-viewer-title {
-  color: #ffffff;
-  font-size: 13.5px;
-  font-weight: 800;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  direction: ltr;
 }
 
 .poster-viewer-close-btn {
-  width: 44px;
-  height: 44px;
-  min-width: 44px;
+  width: 48px;
+  height: 48px;
+  min-width: 48px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.14);
   border: 1.5px solid rgba(255, 255, 255, 0.28);
   color: #ffffff;
   font-size: 20px;
@@ -4006,62 +3879,40 @@ body.light-mode .details-poster-dl-btn.is-saved {
 .poster-viewer-bottombar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 10px;
-  padding: 12px 16px max(18px, env(safe-area-inset-bottom)) 16px;
+  justify-content: center;
+  padding: 12px 16px max(22px, env(safe-area-inset-bottom)) 16px;
   background: linear-gradient(to top, rgba(0, 0, 0, 0.9) 0%, transparent 100%);
   z-index: 3;
   direction: rtl;
 }
 
-.poster-viewer-zoom-group {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 999px;
-  padding: 4px;
-  direction: ltr;
-}
-
-.poster-viewer-zoom-btn {
-  min-width: 38px;
-  height: 36px;
-  padding: 0 10px;
-  border-radius: 999px;
-  border: none;
-  background: transparent;
-  color: #ffffff;
-  font-size: 13px;
-  font-weight: 800;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.poster-viewer-zoom-btn:active {
-  background: rgba(229, 9, 20, 0.75);
-}
-
 .poster-viewer-dl-btn {
-  min-height: 44px;
-  padding: 0 18px;
+  min-height: 48px;
+  padding: 0 24px;
   border-radius: 999px;
-  border: 1px solid rgba(229, 9, 20, 0.7);
+  border: 1px solid rgba(229, 9, 20, 0.75);
   background: linear-gradient(135deg, #e50914, #b80610);
   color: #ffffff;
   font-family: inherit;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 900;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 7px;
+  gap: 8px;
   cursor: pointer;
-  box-shadow: 0 6px 18px rgba(229, 9, 20, 0.35);
+  box-shadow: 0 6px 20px rgba(229, 9, 20, 0.4);
+  transition: transform 0.15s ease, opacity 0.18s ease, background 0.18s ease;
+}
+
+.poster-viewer-dl-btn:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.poster-viewer-dl-btn.is-saved {
+  border-color: rgba(34, 197, 94, 0.8);
+  background: linear-gradient(135deg, #16a34a, #15803d);
+  box-shadow: 0 6px 20px rgba(22, 163, 74, 0.35);
 }
 
 .poster-viewer-dl-btn:disabled {
@@ -4881,10 +4732,6 @@ body.light-mode .details-poster-dl-btn.is-saved {
   <!-- Fullscreen In-App Poster Viewer Modal (Details Page) -->
   <div id="detailsPosterViewerOverlay" class="poster-viewer-overlay" role="dialog" aria-modal="true" aria-label="عارض البوستر">
     <div class="poster-viewer-topbar">
-      <div class="poster-viewer-meta">
-        <span id="posterViewerKindBadge" class="poster-viewer-kind-badge">بوستر عمودي</span>
-        <div id="posterViewerTitle" class="poster-viewer-title"></div>
-      </div>
       <button id="posterViewerCloseBtn" type="button" class="poster-viewer-close-btn" onclick="window.closeDetailsPosterViewer()" title="إغلاق" aria-label="إغلاق عارض البوستر">✕</button>
     </div>
     <div id="posterViewerStage" class="poster-viewer-stage">
@@ -4892,15 +4739,22 @@ body.light-mode .details-poster-dl-btn.is-saved {
       <img id="posterViewerImg" class="poster-viewer-img" src="" alt="بوستر العمل">
     </div>
     <div class="poster-viewer-bottombar">
-      <button id="posterViewerDownloadBtn" type="button" class="poster-viewer-dl-btn" onclick="window.downloadActiveViewerPoster()">
-        <span>⬇️</span>
-        <span id="posterViewerDownloadLabel">تحميل البوستر</span>
+      <button id="btnDownloadPortraitPoster" type="button" class="poster-viewer-dl-btn" style="display:none" onclick="window.downloadActiveViewerPoster()" aria-label="تحميل البوستر العمودي">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="7 10 12 15 17 10"></polyline>
+          <line x1="12" y1="15" x2="12" y2="3"></line>
+        </svg>
+        <span class="poster-viewer-dl-label">تحميل البوستر العمودي</span>
       </button>
-      <div class="poster-viewer-zoom-group" aria-label="التحكم في التكبير">
-        <button id="posterViewerZoomOutBtn" type="button" class="poster-viewer-zoom-btn" onclick="window.adjustPosterViewerZoom(-0.5)" title="تصغير" aria-label="تصغير">－</button>
-        <button id="posterViewerZoomResetBtn" type="button" class="poster-viewer-zoom-btn" onclick="window.resetPosterViewerZoom()" title="الحجم الأصلي" aria-label="إعادة ضبط التكبير">100%</button>
-        <button id="posterViewerZoomInBtn" type="button" class="poster-viewer-zoom-btn" onclick="window.adjustPosterViewerZoom(0.5)" title="تكبير" aria-label="تكبير">＋</button>
-      </div>
+      <button id="btnDownloadLandscapePoster" type="button" class="poster-viewer-dl-btn" style="display:none" onclick="window.downloadActiveViewerPoster()" aria-label="تحميل البوستر الأفقي">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="7 10 12 15 17 10"></polyline>
+          <line x1="12" y1="15" x2="12" y2="3"></line>
+        </svg>
+        <span class="poster-viewer-dl-label">تحميل البوستر الأفقي</span>
+      </button>
     </div>
   </div>
 
@@ -9883,7 +9737,6 @@ window.bindDetailsTitleInteractions = function(fid, rawTitle) {
 
 window.applyPosterViewerTransform = function() {
   const img = document.getElementById("posterViewerImg");
-  const resetBtn = document.getElementById("posterViewerZoomResetBtn");
   const st = window._posterViewerState;
   if (!img || !st) return;
 
@@ -9899,16 +9752,6 @@ window.applyPosterViewerTransform = function() {
     st.panY = Math.max(-maxPanY, Math.min(maxPanY, st.panY || 0));
   }
   img.style.transform = `translate3d(${st.panX.toFixed(1)}px, ${st.panY.toFixed(1)}px, 0) scale(${clampedZoom.toFixed(3)})`;
-  if (resetBtn) {
-    resetBtn.textContent = `${Math.round(clampedZoom * 100)}%`;
-  }
-};
-
-window.adjustPosterViewerZoom = function(delta) {
-  const st = window._posterViewerState;
-  if (!st) return;
-  st.zoom = Math.min(4, Math.max(1, (Number(st.zoom) || 1) + (Number(delta) || 0)));
-  window.applyPosterViewerTransform();
 };
 
 window.resetPosterViewerZoom = function() {
@@ -10059,8 +9902,8 @@ window.openDetailsPosterViewer = function(fid, kind) {
   const overlay = document.getElementById("detailsPosterViewerOverlay");
   const img = document.getElementById("posterViewerImg");
   const statusEl = document.getElementById("posterViewerStatus");
-  const titleEl = document.getElementById("posterViewerTitle");
-  const badgeEl = document.getElementById("posterViewerKindBadge");
+  const portraitBtn = document.getElementById("btnDownloadPortraitPoster");
+  const landscapeBtn = document.getElementById("btnDownloadLandscapePoster");
   if (!overlay || !img) return false;
 
   window._ensurePosterViewerStageGesturesBound();
@@ -10077,10 +9920,16 @@ window.openDetailsPosterViewer = function(fid, kind) {
   };
   window.isDetailsPosterViewerOpen = true;
 
-  if (titleEl) titleEl.textContent = rawTitle;
-  if (badgeEl) {
-    badgeEl.textContent = normalizedKind === "landscape" ? "البوستر الأفقي" : "البوستر العمودي";
+  // Show strictly the download button matching the currently opened poster orientation
+  if (portraitBtn) {
+    portraitBtn.setAttribute("data-dl-key", `${item.firebaseId}:portrait`);
+    portraitBtn.style.display = (normalizedKind === "portrait") ? "inline-flex" : "none";
   }
+  if (landscapeBtn) {
+    landscapeBtn.setAttribute("data-dl-key", `${item.firebaseId}:landscape`);
+    landscapeBtn.style.display = (normalizedKind === "landscape") ? "inline-flex" : "none";
+  }
+
   if (statusEl) {
     statusEl.style.display = "flex";
     statusEl.textContent = "⏳ جاري تحميل الصورة بجودتها الأصلية...";
@@ -10113,8 +9962,12 @@ window.closeDetailsPosterViewer = function() {
   const overlay = document.getElementById("detailsPosterViewerOverlay");
   const img = document.getElementById("posterViewerImg");
   const statusEl = document.getElementById("posterViewerStatus");
+  const portraitBtn = document.getElementById("btnDownloadPortraitPoster");
+  const landscapeBtn = document.getElementById("btnDownloadLandscapePoster");
   window.isDetailsPosterViewerOpen = false;
   if (overlay) overlay.classList.remove("active");
+  if (portraitBtn) portraitBtn.style.display = "none";
+  if (landscapeBtn) landscapeBtn.style.display = "none";
   if (img) {
     img.onload = null;
     img.onerror = null;
@@ -10155,13 +10008,13 @@ window.syncPosterDownloadButtonsUI = function(downloadKey, transientStatus) {
   const isDownloading = Boolean(window._activePosterDownloads && window._activePosterDownloads[downloadKey]);
   const defaultLabel = window.getPosterDownloadDefaultLabel(kind);
 
-  const pageBtnId = kind === "landscape" ? "btnDownloadLandscapePoster" : "btnDownloadPortraitPoster";
-  const pageBtn = document.getElementById(pageBtnId);
-  if (pageBtn && pageBtn.getAttribute("data-dl-key") === downloadKey) {
-    const labelSpan = pageBtn.querySelector(".details-poster-dl-label");
-    pageBtn.disabled = isDownloading;
-    pageBtn.classList.toggle("is-downloading", isDownloading);
-    pageBtn.classList.toggle("is-saved", transientStatus === "saved" && !isDownloading);
+  const btnId = kind === "landscape" ? "btnDownloadLandscapePoster" : "btnDownloadPortraitPoster";
+  const viewerBtn = document.getElementById(btnId);
+  const st = window._posterViewerState;
+  if (viewerBtn && st && st.fid === fid && st.kind === kind) {
+    const labelSpan = viewerBtn.querySelector(".poster-viewer-dl-label");
+    viewerBtn.disabled = isDownloading;
+    viewerBtn.classList.toggle("is-saved", transientStatus === "saved" && !isDownloading);
     if (labelSpan) {
       if (isDownloading) {
         labelSpan.textContent = "جاري التنزيل...";
@@ -10170,20 +10023,6 @@ window.syncPosterDownloadButtonsUI = function(downloadKey, transientStatus) {
       } else {
         labelSpan.textContent = defaultLabel;
       }
-    }
-  }
-
-  const viewerBtn = document.getElementById("posterViewerDownloadBtn");
-  const viewerLabel = document.getElementById("posterViewerDownloadLabel");
-  const st = window._posterViewerState;
-  if (viewerBtn && viewerLabel && st && st.fid === fid && st.kind === kind) {
-    viewerBtn.disabled = isDownloading;
-    if (isDownloading) {
-      viewerLabel.textContent = "جاري التنزيل...";
-    } else if (transientStatus === "saved") {
-      viewerLabel.textContent = "تم الحفظ ✓";
-    } else {
-      viewerLabel.textContent = defaultLabel;
     }
   }
 };
@@ -10415,36 +10254,6 @@ window.renderDetailsPage = function(fid) {
     </div>
   ` : "";
 
-  // Independent Portrait & Landscape Poster Download Buttons (hide any unavailable poster button)
-  let posterDownloadsHtml = (hasPortraitPoster || hasLandscapePoster) ? `
-    <div class="details-poster-downloads-row" id="detailsPosterDownloadsRow">
-      ${hasPortraitPoster ? `
-        <button type="button" id="btnDownloadPortraitPoster" class="details-poster-dl-btn" data-dl-key="${item.firebaseId}:portrait" onclick="window.downloadDetailsPoster('${item.firebaseId}', 'portrait')" aria-label="تحميل البوستر العمودي">
-          <span class="details-poster-dl-icon">
-            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-              <polyline points="7 10 12 15 17 10"></polyline>
-              <line x1="12" y1="15" x2="12" y2="3"></line>
-            </svg>
-          </span>
-          <span class="details-poster-dl-label">تحميل البوستر العمودي</span>
-        </button>
-      ` : ''}
-      ${hasLandscapePoster ? `
-        <button type="button" id="btnDownloadLandscapePoster" class="details-poster-dl-btn" data-dl-key="${item.firebaseId}:landscape" onclick="window.downloadDetailsPoster('${item.firebaseId}', 'landscape')" aria-label="تحميل البوستر الأفقي">
-          <span class="details-poster-dl-icon">
-            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-              <polyline points="7 10 12 15 17 10"></polyline>
-              <line x1="12" y1="15" x2="12" y2="3"></line>
-            </svg>
-          </span>
-          <span class="details-poster-dl-label">تحميل البوستر الأفقي</span>
-        </button>
-      ` : ''}
-    </div>
-  ` : "";
-
   // Genres chips
   let genres = window.getItemGenres(item);
   let genresHtml = (genres.length > 0) ? `
@@ -10543,12 +10352,6 @@ window.renderDetailsPage = function(fid) {
         <img id="detailsLandscapePosterImg" class="details-panoramic-img ${hasLandscapePoster ? 'is-clickable-poster' : ''}" src="${bannerDisplayImg}" alt="${safeTitle}" loading="eager" ${landscapeClickAttrs} onerror="this.src='${portraitImg}'">
         <div class="details-hero-overlay-top"></div>
         <div class="details-hero-overlay-bottom"></div>
-        ${hasLandscapePoster ? `
-          <button type="button" id="detailsHeroExpandBadge" class="details-hero-zoom-badge" onclick="event.stopPropagation(); window.openDetailsPosterViewer('${item.firebaseId}', 'landscape')" title="عرض البوستر الأفقي كاملاً" aria-label="عرض البوستر الأفقي كاملاً">
-            <span>🔍</span>
-            <span>عرض الغلاف</span>
-          </button>
-        ` : ''}
         
         <!-- Floating Navigation & Action Bar with Prominent Back Button -->
         <div class="details-top-bar">
@@ -10611,9 +10414,6 @@ window.renderDetailsPage = function(fid) {
         </button>
         ${adminActionsHtml}
       </div>
-
-      <!-- Independent Portrait & Landscape Poster Download Buttons -->
-      ${posterDownloadsHtml}
 
       <!-- 4. Story & Categories Card -->
       <div class="details-info-card">

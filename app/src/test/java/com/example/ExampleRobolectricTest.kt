@@ -625,11 +625,17 @@ class ExampleRobolectricTest {
         )
         assertTrue("Fullscreen poster viewer modal and back-button handler must exist",
             html.contains("""id="detailsPosterViewerOverlay"""") &&
+            html.contains("""id="posterViewerCloseBtn"""") &&
             html.contains("window.openDetailsPosterViewer") &&
             html.contains("window.closeDetailsPosterViewer") &&
             html.contains("if (window.isDetailsPosterViewerOpen")
         )
-        assertTrue("Independent portrait and landscape poster download buttons must exist",
+        assertFalse("Details page must NOT contain عرض الغلاف badge or permanent poster download row",
+            html.contains("عرض الغلاف") ||
+            html.contains("detailsHeroExpandBadge") ||
+            html.contains("detailsPosterDownloadsRow")
+        )
+        assertTrue("Independent portrait and landscape poster download buttons must exist inside fullscreen viewer",
             html.contains("""id="btnDownloadPortraitPoster"""") &&
             html.contains("""id="btnDownloadLandscapePoster"""") &&
             html.contains("تحميل البوستر العمودي") &&
